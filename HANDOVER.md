@@ -26,12 +26,11 @@ Custom Home Assistant integration for Renogy Bluetooth-enabled solar devices (Bl
    - Safe device info creation with fallback values
    - Robust unique ID generation with validation
 
-5. **NoneType Coordinator Data Error** - FIXED (Latest)
-   - Enhanced coordinator data property with comprehensive safety checks
-   - Added validation to ensure data is always a valid dictionary
-   - Improved sensor initialization with better error handling
-   - Added fallback unique ID generation when BLE device is unavailable
-   - Enhanced integration setup with proper coordinator validation
+5. **NoneType Coordinator Data Error & Missing Power Sensors** - FIXED (Latest)
+   - **Root Cause**: Identified that Home Assistant was using cached, outdated integration files, causing persistent `NoneType` errors and preventing new sensors from appearing.
+   - **Solution**: Replaced the hardcoded sensor list in `sensor.py` with the full list from `const.py`, enabling all power-related sensors (current, power, SoC, etc.).
+   - **Solution**: Corrected the device info creation in `sensor.py` to safely get the model number from coordinator data, finally resolving the `NoneType` crash.
+   - **Process**: Added "ratchet" comments to key files to prevent future regressions from stale code.
 
 ### 🔄 CURRENT ISSUES
 1. **Bluetooth Connection Issues** - ONGOING
@@ -43,7 +42,7 @@ Custom Home Assistant integration for Renogy Bluetooth-enabled solar devices (Bl
 ### 📊 INTEGRATION HEALTH
 - **Loading**: ✅ Successful (no import errors)
 - **Configuration**: ✅ Manual Bluetooth address input working
-- **Sensor Creation**: ✅ Fixed with comprehensive error handling
+- **Sensor Creation**: ✅ All power sensors are now created
 - **Data Collection**: ✅ Enhanced with robust error handling
 - **Connection Stability**: 🔄 Improved with retry logic and better error reporting
 
@@ -63,9 +62,16 @@ Home Assistant → Config Flow → Coordinator → BluPow Client → BLE Device
             Sensor Entities ← Coordinator Data ← BLE Response
 ```
 
-## Recent Changes (Latest Session - NoneType Error Fix)
+## Recent Changes (Latest Session - Power Sensor & Caching Fix)
 
-### Coordinator Improvements (Latest)
+### Sensor Improvements (Latest)
+- **FIXED**: Removed hardcoded sensor list and now import `DEVICE_SENSORS` directly from `const.py`. All defined power sensors will now be created.
+- **FIXED**: Corrected `_create_device_info` to safely access coordinator data, resolving the persistent `NoneType` crash.
+
+### Process Improvements (Latest)
+- Added `HANDOVER-V2-CHECKPOINT` comments to `__init__.py`, `sensor.py`, and `coordinator.py` to ensure developers consult the handover document and prevent regressions caused by deploying stale code.
+
+### Coordinator Improvements
 - Enhanced data property with comprehensive safety checks
 - Added validation to ensure data is always a valid dictionary
 - Improved error handling in data access methods
@@ -96,23 +102,16 @@ Home Assistant → Config Flow → Coordinator → BluPow Client → BLE Device
 ## Next Steps
 
 ### Immediate (Next Session)
-1. **Test Integration Restart**
-   - Restart Home Assistant after latest changes
-   - Verify sensor entities are created successfully
-   - Check for any remaining initialization errors
-   - Monitor comprehensive logging output
+1. **Deploy and Test with `sudo`**
+   - **Crucially**, use the `sudo` command provided in the discussion to remove the old integration directory and copy the new one. This is required to bypass file permission issues and clear any caching.
+   - Restart Home Assistant.
+   - Verify that all power sensors (Battery/Solar Current, Power, SoC) appear as entities.
+   - Confirm the `NoneType` error is gone from the logs.
+   - Check if data is populating for the new sensors.
 
-2. **Monitor Connection Attempts**
-   - Watch logs for detailed BluPow connection attempts
-   - Verify data is being fetched successfully
-   - Check sensor values are updating
-   - Monitor error counts and connection status
-
-3. **Validate Sensor Data**
-   - Confirm voltage readings are reasonable
-   - Verify sensor states are updating
-   - Check device info is displayed correctly
-   - Monitor error handling behavior
+2. **Validate Energy Dashboard Integration**
+   - Once sensors are confirmed to be working, attempt to add them to the Home Assistant Energy Dashboard.
+   - Monitor for any new warnings related to `state_class` or `device_class`.
 
 ### Short Term
 1. **Connection Reliability**
@@ -243,11 +242,12 @@ blupow/
 - This is a custom integration, not officially supported by Home Assistant
 - Bluetooth connectivity can be affected by device proximity and interference
 - Regular monitoring of logs is recommended for troubleshooting
+- **Deployment**: Remember that `sudo` may be required to update the files in the Home Assistant `custom_components` directory due to file ownership.
 - Integration is designed for Renogy BluPow devices specifically
 - Comprehensive error handling ensures stability even with connection issues
 - Latest changes have resolved the NoneType coordinator data error
 
 ---
-**Last Updated**: 2025-01-19
-**Status**: Active Development - Core functionality implemented with comprehensive error handling, ready for testing
+**Last Updated**: 2025-01-20
+**Status**: Active Development - Power sensor suite implemented; caching issue identified and fixed. Ready for deployment and testing.
 
