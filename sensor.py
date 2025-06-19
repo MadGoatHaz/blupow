@@ -82,5 +82,5 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
     @property
     def available(self) -> bool:
         """Return if the entity is available."""
-        return self.coordinator.last_update_success and self.coordinator.client.is_connected
+        return self.coordinator.last_update_success
 

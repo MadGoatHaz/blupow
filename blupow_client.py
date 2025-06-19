@@ -3,7 +3,11 @@ import asyncio
 import logging
 from typing import Any
 
-from bleak import BleakClient, BleakError
+from bleak.backends.client import BleakClient
+from bleak.exc import BleakError
+
+from homeassistant.components import bluetooth
+from homeassistant.core import HomeAssistant
 from bleak.backends.device import BLEDevice
 
 from .const import (
@@ -18,103 +22,70 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class BluPowClient:
-    """A client to handle a persistent BLE connection to a Renogy device."""
+    """A client to handle reading data from a Renogy device."""
 
-    def __init__(self, device: BLEDevice):
+    def __init__(self, hass: HomeAssistant, device: BLEDevice):
         """Initialize the BluPowClient."""
+        self._hass = hass
         self._device = device
-        self._client: BleakClient | None = None
-        self._lock = asyncio.Lock()
-        self._notification_queue = asyncio.Queue()
-
-    @property
-    def is_connected(self) -> bool:
-        """Return True if the client is currently connected."""
-        return self._client is not None and self._client.is_connected
+        self._notification_queue: asyncio.Queue[bytearray] = asyncio.Queue()
 
     async def _notification_handler(self, sender: int, data: bytearray):
         """Handle incoming notifications."""
         await self._notification_queue.put(data)
 
-    async def connect(self) -> bool:
-        """Establish a persistent connection."""
-        _LOGGER.info("Attempting to connect to %s", self._device.address)
-        async with self._lock:
-            if self.is_connected:
-                return True
-            try:
-                self._client = BleakClient(self._device)
-                await self._client.connect()
-                _LOGGER.info("Successfully connected to %s", self._device.address)
-                return True
-            except (BleakError, asyncio.TimeoutError) as e:
-                _LOGGER.error("Failed to connect to %s: %s", self._device.address, e)
-                self._client = None
-                return False
-
-    async def disconnect(self) -> None:
-        """Disconnect from the device."""
-        if not self.is_connected:
-            return
-        _LOGGER.info("Disconnecting from %s", self._device.address)
-        async with self._lock:
-            if self._client:
-                await self._client.disconnect()
-            self._client = None
-
     async def get_data(self) -> dict[str, Any]:
         """Read device data."""
-        # This will acquire a lock if it needs to connect, and then release it.
-        if not await self._ensure_connected():
-            raise BleakError("Could not connect to the device.")
-
-        # This lock ensures that we don't have multiple data reads happening at once.
-        async with self._lock:
-            if not self.is_connected:
-                # Connection could have been lost between checks
-                raise BleakError("Device got disconnected")
+        async with bluetooth.async_get_bleak_client_for_device(
+            self._hass, self._device
+        ) as client:
             try:
                 # First, get the model number
-                raw_model = await self._client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
+                raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
                 model = raw_model.decode("utf-8").strip()
-                _LOGGER.info("Successfully read model number: %s", model)
+                _LOGGER.info(
+                    "Successfully read model number: %s for %s",
+                    model,
+                    self._device.address,
+                )
 
                 # Now, get the rest of the data
-                data = await self._read_registers(
-                    REG_BATTERY_VOLTAGE, 7
-                )  # Read 7 registers starting from battery voltage
-
+                data = await self._read_registers(client, REG_BATTERY_VOLTAGE, 7)
                 parsed_data = self._parse_data(data)
 
                 return {"model_number": model, **parsed_data}
+            except BleakError as e:
+                _LOGGER.warning(
+                    "Bluetooth error communicating with %s: %s", self._device.address, e
+                )
+                raise
             except Exception as e:
-                _LOGGER.error("Failed to read device data: %s", e)
-                raise BleakError(f"Failed to read device data: {e}") from e
+                _LOGGER.error(
+                    "Unexpected error communicating with %s: %s", self._device.address, e
+                )
+                raise
 
-    async def _read_registers(self, start_register: int, count: int) -> bytearray:
-        """
-        Read a range of registers from the device.
-        Assumes the caller is holding the lock.
-        """
-        # Clear queue of old data
+    async def _read_registers(
+        self, client: BleakClient, start_register: int, count: int
+    ) -> bytearray:
+        """Read a range of registers from the device."""
         while not self._notification_queue.empty():
             self._notification_queue.get_nowait()
 
-        await self._client.start_notify(RENOGY_RX_CHAR_UUID, self._notification_handler)
+        await client.start_notify(RENOGY_RX_CHAR_UUID, self._notification_handler)
 
-        # Command to read registers
-        # Format: ff 03 <start_reg_high> <start_reg_low> <count_high> <count_low> <crc>
-        command = bytearray([0xff, 0x03, start_register >> 8, start_register & 0xff, 0x00, count])
-        # For now, we don't calculate CRC. The device seems to work without it.
-        # This is not ideal and should be fixed in the future.
-        command.extend([0x00, 0x00])
+        command = bytearray(
+            [0xFF, 0x03, start_register >> 8, start_register & 0xFF, 0x00, count]
+        )
+        command.extend([0x00, 0x00])  # No CRC for now
 
-        await self._client.write_gatt_char(RENOGY_TX_CHAR_UUID, command, response=True)
+        await client.write_gatt_char(RENOGY_TX_CHAR_UUID, command, response=True)
 
         response = bytearray()
         try:
-            # First notification contains the header and length
-            notification = await asyncio.wait_for(self._notification_queue.get(), timeout=5.0)
+            notification = await asyncio.wait_for(
+                self._notification_queue.get(), timeout=10.0
+            )
 
             if len(notification) < 3 or notification[0] != 0xFF or notification[1] != 0x03:
                 raise ValueError(f"Invalid header in first notification: {notification}")
@@ -122,42 +93,35 @@ class BluPowClient:
             response.extend(notification)
             expected_payload_len = notification[2]
 
-            # Keep reading until we have the full payload
             while len(response) < 3 + expected_payload_len:
-                notification = await asyncio.wait_for(self._notification_queue.get(), timeout=2.0)
+                notification = await asyncio.wait_for(
+                    self._notification_queue.get(), timeout=5.0
+                )
                 response.extend(notification)
 
         finally:
-            await self._client.stop_notify(RENOGY_RX_CHAR_UUID)
+            await client.stop_notify(RENOGY_RX_CHAR_UUID)
 
         return response
 
     def _parse_data(self, data: bytearray) -> dict[str, Any]:
         """Parse the raw data from the device."""
-        # ff 03 <len> <data> <crc>
-        if len(data) < 3 or data[0] != 0xff or data[1] != 0x03:
+        if len(data) < 3 or data[0] != 0xFF or data[1] != 0x03:
             raise ValueError(f"Invalid response header: {data}")
 
         data_len = data[2]
         if len(data) < 3 + data_len:
-            raise ValueError(f"Incomplete response: expected {3+data_len} bytes, got {len(data)}")
+            raise ValueError(
+                f"Incomplete response: expected {3+data_len} bytes, got {len(data)}"
+            )
 
         payload = data[3 : 3 + data_len]
 
-        # For now, we only parse battery and solar voltage
-        # payload[0:2] corresponds to REG_BATTERY_VOLTAGE (0x0101) because we started reading from there.
         battery_voltage = int.from_bytes(payload[0:2], "big") / 10
-        # REG_SOLAR_VOLTAGE (0x0107) is at offset 6*2=12 bytes from start register 0x0101
         solar_voltage = int.from_bytes(payload[12:14], "big") / 10
 
         return {
             "battery_voltage": battery_voltage,
             "solar_voltage": solar_voltage,
         }
-
-    async def _ensure_connected(self) -> bool:
-        """Ensures the client is connected, trying to reconnect if necessary."""
-        if self.is_connected:
-            return True
-        return await self.connect()
 

@@ -19,11 +19,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     address = entry.data[CONF_ADDRESS]
     _LOGGER.info("Setting up BluPow entry for %s", address)
 
-    ble_device = async_ble_device_from_address(hass, address, connectable=True)
+    ble_device = async_ble_device_from_address(
+        hass, address.upper(), connectable=True
+    )
     if not ble_device:
-        raise ConfigEntryNotReady(f"Device with address {address} not found.")
+        raise ConfigEntryNotReady(f"Could not find BLE device with address {address}")
 
-    client = BluPowClient(ble_device)
+    client = BluPowClient(hass, ble_device)
     coordinator = BluPowDataUpdateCoordinator(hass, client)
     
     hass.data.setdefault(DOMAIN, {})
