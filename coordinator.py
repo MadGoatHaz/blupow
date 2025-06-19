@@ -3,7 +3,7 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from bleak.exc import BleakError
+from bleak.exc import BleakError, BleakTimeoutError
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -32,8 +32,16 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch data from the Bluetooth device."""
         try:
             return await self.client.get_data()
+        except BleakTimeoutError as err:
+            _LOGGER.warning("Timeout connecting to device %s: %s", 
+                          self.client._device.address, err)
+            raise UpdateFailed(f"Connection timeout: {err}") from err
         except BleakError as err:
-            raise UpdateFailed(f"Error communicating with device: {err}") from err
+            _LOGGER.warning("Bluetooth error with device %s: %s", 
+                          self.client._device.address, err)
+            raise UpdateFailed(f"Bluetooth error: {err}") from err
         except Exception as err:
-            raise UpdateFailed(f"Unexpected error during update: {err}") from err
+            _LOGGER.error("Unexpected error with device %s: %s", 
+                         self.client._device.address, err)
+            raise UpdateFailed(f"Unexpected error: {err}") from err
 

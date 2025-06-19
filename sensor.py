@@ -73,14 +73,23 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
         )
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> str | float | None:
         """Return the state of the sensor from the coordinator."""
         if self.coordinator.data:
-            return self.coordinator.data.get(self.entity_description.key)
+            value = self.coordinator.data.get(self.entity_description.key)
+            if value is None:
+                return None
+            # For numeric sensors, ensure we return a number
+            if self.entity_description.key in ["battery_voltage", "solar_voltage"]:
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return None
+            return value
         return None
 
     @property
     def available(self) -> bool:
         """Return if the entity is available."""
-        return self.coordinator.last_update_success
+        return self.coordinator.last_update_success and self.native_value is not None
 
