@@ -417,73 +417,66 @@ The BluPow integration automatically supports **ESPHome Bluetooth Proxies** to e
 - **Automatic Integration**: Home Assistant automatically uses all available proxies
 - **Active Connections**: Support for up to 3 simultaneous active connections per proxy
 
-### Your Current Proxy Setup
+### Your Current Multi-Proxy Setup
 
-**Proxy Details**:
+**Primary Proxy** (Tested):
 - **Name**: `esp32-bluetooth-proxy-2105e4` (Bluetooth Proxy Testy)
 - **IP Address**: `192.168.51.151`
 - **MAC Address**: `A0:B7:65:21:05:E6`
 - **Status**: ✅ Active with 3 connection slots
-- **Configuration**: Uses [esphome/bluetooth-proxies](https://github.com/esphome/bluetooth-proxies) template
+- **Signal Impact**: +10 dB improvement observed (-88 to -78 dBm)
 
-**Current Configuration**:
-```yaml
-substitutions:
-  name: esp32-bluetooth-proxy-2105e4
-  friendly_name: Bluetooth Proxy Testy
-packages:
-  esphome.bluetooth-proxy: github://esphome/bluetooth-proxies/esp32-generic/esp32-generic.yaml@main
-```
+**Additional Proxies** (Available for testing):
+- **Proxy 2**: `192.168.51.207` ✅ (Reachable)
+- **Proxy 3**: `192.168.51.109` ✅ (Reachable)
 
-### How It Works with BluPow
+**Multi-Proxy Advantages**:
+- **Total Connection Slots**: Up to 9 simultaneous active connections (3 per proxy)
+- **Fault Tolerance**: If one proxy fails, others continue operating
+- **Coverage Expansion**: Strategic placement covers entire property
+- **Signal Optimization**: Home Assistant automatically uses the proxy with best signal
+- **Load Distribution**: Connections distributed across multiple proxies
 
-1. **Automatic Discovery**: Home Assistant's Bluetooth integration automatically uses your proxy
-2. **Extended Range**: Your proxy can reach Renogy devices that the main system cannot
-3. **Seamless Operation**: BluPow integration works transparently through the proxy
-4. **Better Signal**: Proxy may provide stronger signal than built-in Bluetooth
+### How Multi-Proxy Setup Works
 
-### Testing Proxy Connectivity
+As detailed in the ESPHome documentation, Home Assistant's Bluetooth integration **automatically aggregates** all available proxies:
 
-To test if your proxy can reach the Renogy device:
+1. **Automatic Discovery**: Home Assistant discovers all ESPHome proxies on the network
+2. **Unified View**: All BLE devices appear as if directly connected to Home Assistant
+3. **Best Signal Selection**: System automatically uses the proxy with strongest signal
+4. **Seamless Failover**: If one proxy becomes unavailable, others take over
+5. **No Configuration Required**: Works transparently with existing integrations
+
+### Testing Additional Proxies
+
+To test if your other proxies can "see more things" and potentially reach the Renogy device:
 
 ```bash
-# Check if proxy is active in Home Assistant logs
-docker logs homeassistant 2>&1 | grep -i "bluetooth.*proxy"
+# Check if additional proxies are active in Home Assistant
+docker logs homeassistant 2>&1 | grep -E "(192\.168\.51\.207|192\.168\.51\.109)"
 
-# Monitor proxy connections
-docker logs homeassistant 2>&1 | grep -i "esp32-bluetooth-proxy-2105e4"
+# Monitor for proxy-specific Bluetooth activity
+docker logs homeassistant 2>&1 | grep -i "bluetooth.*proxy" | tail -10
 ```
 
-### Optimizing Proxy Performance
+### Optimizing Multi-Proxy Coverage
 
-Based on the [ESPHome documentation](https://esphome.io/components/bluetooth_proxy.html):
+**Strategic Placement Recommendations**:
 
-1. **Signal Strength**: Your proxy shows excellent WiFi signal (-48 dB)
-2. **Active Connections**: Configured for 3 simultaneous connections
-3. **Scan Parameters**: Uses optimized scanning (320ms interval, 30ms window)
-4. **Raw Advertisements**: Enabled for maximum compatibility
+1. **Proxy 1** (`192.168.51.151`): Already providing +10 dB signal improvement
+2. **Proxy 2** (`192.168.51.207`): Deploy closer to Renogy device location
+3. **Proxy 3** (`192.168.51.109`): Position for maximum coverage overlap
 
-### Troubleshooting with Proxy
+**Signal Strength Benefits**:
+- **Current**: -78 dBm (improved from -88 dBm with first proxy)
+- **Potential**: Could achieve -60 to -70 dBm with optimal proxy placement
+- **Target**: Get signal strength above -75 dBm for reliable connections
 
-If direct connection fails but proxy is available:
+### Expected Multi-Proxy Improvements
 
-1. **Check Proxy Status**: Ensure proxy is online at `192.168.51.151`
-2. **Proximity**: Verify proxy is closer to Renogy device than main system
-3. **Connection Slots**: Monitor if all 3 connection slots are in use
-4. **Range Test**: Move proxy closer to Renogy device if needed
+Based on your setup, the additional proxies should provide:
 
-### Multiple Proxy Setup
-
-As mentioned in the [community discussion](https://community.home-assistant.io/t/beginner-help-with-esphome-bluetooth-proxy/459061), you can:
-
-- Deploy multiple proxies for better coverage
-- Each proxy provides 3 additional connection slots
-- Home Assistant automatically load-balances across proxies
-- Proxies provide fault-tolerant connectivity
-
-### Current Status with Proxy
-
-Your BluPow integration should automatically benefit from the proxy:
-- **Proxy Location**: `192.168.51.151` 
-- **Renogy Device**: `D8:B6:73:BF:4F:75` (BTRIC134000035)
-- **Signal Improvement**: Proxy may provide better signal than -88 dBm direct connection 
+- **Extended Range**: Cover areas beyond 10-15 meter Bluetooth range
+- **Better Signal**: Proxies closer to Renogy device will provide stronger signal
+- **Increased Reliability**: Multiple connection paths reduce connection failures
+- **Higher Success Rate**: More proxies = more chances for successful connection 
