@@ -48,6 +48,16 @@ async def async_setup_entry(
         coordinator: BluPowDataUpdateCoordinator = entry.runtime_data
         _LOGGER.info("Setting up BluPow sensors with coordinator: %s", coordinator)
         
+        # Verify coordinator is properly initialized
+        if not coordinator:
+            _LOGGER.error("Coordinator is None, cannot set up sensors")
+            return
+        
+        # Ensure coordinator has data
+        if not hasattr(coordinator, 'data') or coordinator.data is None:
+            _LOGGER.warning("Coordinator data is None, initializing default data")
+            # This should trigger the coordinator's data property to initialize
+        
         # Create sensors with comprehensive error handling
         entities = []
         for description in DEVICE_SENSORS:
@@ -83,13 +93,18 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
             super().__init__(coordinator)
             self.entity_description = description
             
+            # Verify coordinator is available
+            if not coordinator:
+                _LOGGER.error("Coordinator is None for sensor %s", description.key)
+                raise ValueError("Coordinator is None")
+            
             # Safe unique ID generation
-            if coordinator and coordinator.ble_device:
+            if coordinator.ble_device:
                 self._attr_unique_id = f"{coordinator.ble_device.address}_{description.key}"
                 _LOGGER.debug("Generated unique ID: %s", self._attr_unique_id)
             else:
-                _LOGGER.error("Coordinator or BLE device not available for sensor %s", description.key)
-                raise ValueError("Coordinator or BLE device not available")
+                _LOGGER.warning("BLE device not available, using fallback unique ID")
+                self._attr_unique_id = f"blupow_{description.key}"
             
             # Safe device info initialization
             self._attr_device_info = self._create_device_info(coordinator)
@@ -103,8 +118,17 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
     def _create_device_info(self, coordinator: BluPowDataUpdateCoordinator) -> DeviceInfo:
         """Create device info with comprehensive error handling."""
         try:
-            if not coordinator or not coordinator.ble_device:
-                _LOGGER.warning("Creating device info with minimal data")
+            if not coordinator:
+                _LOGGER.warning("Creating device info with minimal data - no coordinator")
+                return DeviceInfo(
+                    connections={},
+                    name="BluPow Device",
+                    manufacturer="BluPow",
+                    model="Unknown",
+                )
+            
+            if not coordinator.ble_device:
+                _LOGGER.warning("Creating device info with minimal data - no BLE device")
                 return DeviceInfo(
                     connections={},
                     name="BluPow Device",
@@ -142,17 +166,28 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
                 _LOGGER.warning("No coordinator available for sensor %s", self.entity_description.key)
                 return None
             
-            # Check if coordinator data exists
-            if not hasattr(self.coordinator, 'data') or self.coordinator.data is None:
-                _LOGGER.debug("No coordinator data available for sensor %s", self.entity_description.key)
+            # Check if coordinator data exists and is accessible
+            try:
+                data = self.coordinator.data
+                if data is None:
+                    _LOGGER.debug("Coordinator data is None for sensor %s", self.entity_description.key)
+                    return None
+                
+                # Safe data access
+                value = data.get(self.entity_description.key)
+                _LOGGER.debug("Sensor %s value: %s (type: %s)", 
+                             self.entity_description.key, value, type(value))
+                
+                return value
+                
+            except AttributeError as attr_err:
+                _LOGGER.error("Coordinator data attribute error for sensor %s: %s", 
+                             self.entity_description.key, attr_err)
                 return None
-            
-            # Safe data access
-            value = self.coordinator.data.get(self.entity_description.key)
-            _LOGGER.debug("Sensor %s value: %s (type: %s)", 
-                         self.entity_description.key, value, type(value))
-            
-            return value
+            except Exception as data_err:
+                _LOGGER.error("Error accessing coordinator data for sensor %s: %s", 
+                             self.entity_description.key, data_err)
+                return None
             
         except Exception as err:
             _LOGGER.error("Error getting native value for sensor %s: %s", 

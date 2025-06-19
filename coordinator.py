@@ -31,6 +31,7 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             
             _LOGGER.info("BluPow coordinator initialized successfully")
             _LOGGER.debug("BLE device: %s", self.ble_device)
+            _LOGGER.debug("Initial data: %s", self._data)
             
         except Exception as err:
             _LOGGER.error("Failed to initialize BluPow coordinator: %s", err)
@@ -58,18 +59,33 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     def data(self) -> Dict[str, Any]:
         """Return the data with safety checks."""
         try:
+            # Ensure _data attribute exists and is not None
             if not hasattr(self, '_data') or self._data is None:
                 _LOGGER.warning("Data not initialized, creating default data")
                 self._data = self._get_default_data()
+            
+            # Double-check that we have a valid dictionary
+            if not isinstance(self._data, dict):
+                _LOGGER.error("Data is not a dictionary, resetting to default")
+                self._data = self._get_default_data()
+            
+            _LOGGER.debug("Returning coordinator data: %s", self._data)
             return self._data
+            
         except Exception as err:
             _LOGGER.error("Error accessing coordinator data: %s", err)
-            return self._get_default_data()
+            # Create a fresh default data structure
+            self._data = self._get_default_data()
+            return self._data
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Update data via BluPow client with comprehensive error handling."""
         try:
             _LOGGER.info("Starting BluPow data update")
+            
+            # Ensure we have valid data structure
+            if not hasattr(self, '_data') or self._data is None:
+                self._data = self._get_default_data()
             
             # Check if client is available
             if not self.client:
@@ -107,6 +123,10 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     def _update_error_status(self, error_message: str) -> None:
         """Update error status in data."""
         try:
+            # Ensure we have valid data structure
+            if not hasattr(self, '_data') or self._data is None:
+                self._data = self._get_default_data()
+            
             self._data["connection_status"] = "error"
             self._data["last_update"] = "error"
             self._data["error_count"] += 1
