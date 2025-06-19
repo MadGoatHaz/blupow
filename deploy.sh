@@ -199,7 +199,8 @@ main() {
     
     # Backup existing installation if it exists
     if [ -d "$BLUPOW_DIR" ]; then
-        BACKUP_DIR="$BLUPOW_DIR.backup.$(date +%Y%m%d_%H%M%S)"
+        # Use a backup directory name that won't be treated as a Python module
+        BACKUP_DIR="$CUSTOM_COMPONENTS_DIR/_blupow_backup_$(date +%Y%m%d_%H%M%S)"
         echo "💾 Backing up existing installation to $BACKUP_DIR"
         if ! mv "$BLUPOW_DIR" "$BACKUP_DIR" 2>/dev/null; then
             echo "⚠️  Could not backup existing installation (permission issue)"
