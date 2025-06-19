@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BluPow: Renogy Bluetooth",
+        "description": "Select your Renogy device from the list below.",
+        "data": {
+          "address": "Device"
+        }
+      }
+    },
+    "errors": {
+      "cannot_connect": "Failed to connect to the device. Please ensure it is online, in range, and not connected to another app (like the Renogy app on your phone)."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "no_devices_found": "No compatible Renogy devices found. Please ensure your device is powered on and within Bluetooth range."
+    }
+  },
+  "title": "BluPow: Renogy Bluetooth"
+}
+
