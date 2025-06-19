@@ -162,6 +162,19 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
                 _LOGGER.debug("Sensor %s value: %s (type: %s)", 
                              self.entity_description.key, value, type(value))
                 
+                # Check for connection issues and show helpful error states
+                connection_status = data.get("connection_status", "unknown")
+                error_count = data.get("error_count", 0)
+                
+                if connection_status == "error" and error_count > 5:
+                    # Show "Device Not Found" instead of None for user clarity
+                    if "not found" in str(data.get("last_error", "")).lower():
+                        return "Device Not Found"
+                    elif "connection slot" in str(data.get("last_error", "")).lower():
+                        return "Device Not Discoverable"
+                    else:
+                        return "Connection Error"
+                
                 return value
                 
             except AttributeError as attr_err:
