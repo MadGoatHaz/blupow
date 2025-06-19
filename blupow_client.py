@@ -244,7 +244,7 @@ class BluPowClient:
         try:
             _LOGGER.debug("Reading register data from device %s", self.address)
             
-            # Try to read register data
+            # Try to read register data with original UUIDs
             try:
                 data = await self._read_registers(client, REG_BATTERY_SOC, 10)
                 _LOGGER.debug("Raw register data received: %s", data.hex())
@@ -253,6 +253,16 @@ class BluPowClient:
                 return parsed_data
             except Exception as reg_err:
                 _LOGGER.warning("Register reading failed for %s: %s", self.address, reg_err)
+                
+                # Try different characteristic UUIDs
+                _LOGGER.info("Trying different characteristic UUIDs for %s", self.address)
+                try:
+                    different_char_data = await self._try_different_characteristics(client)
+                    if any(value is not None for value in different_char_data.values()):
+                        _LOGGER.info("Successfully read data using different characteristics")
+                        return different_char_data
+                except Exception as diff_err:
+                    _LOGGER.warning("Different characteristics approach failed: %s", diff_err)
                 
                 # Try alternative approach - read individual characteristics
                 _LOGGER.info("Trying alternative data reading approach for %s", self.address)
@@ -275,17 +285,21 @@ class BluPowClient:
             
             result = self._get_default_register_data()
             
+            # Log all available services and characteristics for debugging
+            _LOGGER.info("=== DEVICE CHARACTERISTIC DISCOVERY ===")
+            _LOGGER.info("Device: %s (%s)", self.name, self.address)
+            
             for service in services_list:
-                _LOGGER.debug("Service %s: %s", service.uuid, service.description)
+                _LOGGER.info("Service: %s - %s", service.uuid, service.description or "Unknown")
                 for char in service.characteristics:
-                    _LOGGER.debug("  Characteristic %s: %s (props: %s)", 
-                                 char.uuid, char.description, char.properties)
+                    _LOGGER.info("  Characteristic: %s - %s (props: %s)", 
+                                 char.uuid, char.description or "Unknown", char.properties)
                     
                     # Try to read readable characteristics
                     if "read" in char.properties:
                         try:
                             data = await client.read_gatt_char(char.uuid)
-                            _LOGGER.debug("  Read %s: %s (hex: %s)", char.uuid, data, data.hex())
+                            _LOGGER.info("  Read %s: %s (hex: %s)", char.uuid, data, data.hex())
                             
                             # Try to parse as numeric data
                             if len(data) >= 2:
@@ -293,17 +307,50 @@ class BluPowClient:
                                 _LOGGER.debug("  Parsed as 16-bit value: %d", value)
                                 
                                 # Map characteristic UUIDs to sensor names if possible
-                                if "battery" in char.description.lower() or "voltage" in char.description.lower():
+                                # Look for patterns in the data or characteristic properties
+                                if "battery" in (char.description or "").lower() or "voltage" in (char.description or "").lower():
                                     result["battery_voltage"] = value / 10.0  # Assume 0.1V resolution
-                                elif "current" in char.description.lower():
+                                    _LOGGER.info("  Mapped to battery_voltage: %.1fV", result["battery_voltage"])
+                                elif "current" in (char.description or "").lower():
                                     result["battery_current"] = value / 100.0  # Assume 0.01A resolution
-                                elif "soc" in char.description.lower() or "charge" in char.description.lower():
+                                    _LOGGER.info("  Mapped to battery_current: %.2fA", result["battery_current"])
+                                elif "soc" in (char.description or "").lower() or "charge" in (char.description or "").lower():
                                     result["battery_soc"] = value
-                                elif "temp" in char.description.lower():
+                                    _LOGGER.info("  Mapped to battery_soc: %d%%", result["battery_soc"])
+                                elif "temp" in (char.description or "").lower():
                                     result["battery_temp"] = value
+                                    _LOGGER.info("  Mapped to battery_temp: %d°C", result["battery_temp"])
+                                elif "solar" in (char.description or "").lower():
+                                    # Try to determine if it's voltage or current based on value range
+                                    if value > 1000:  # Likely voltage in 0.1V units
+                                        result["solar_voltage"] = value / 10.0
+                                        _LOGGER.info("  Mapped to solar_voltage: %.1fV", result["solar_voltage"])
+                                    else:  # Likely current in 0.01A units
+                                        result["solar_current"] = value / 100.0
+                                        _LOGGER.info("  Mapped to solar_current: %.2fA", result["solar_current"])
+                                else:
+                                    # Try to guess based on value ranges
+                                    if 1200 <= value <= 1500:  # Typical battery voltage range (12-15V in 0.1V units)
+                                        result["battery_voltage"] = value / 10.0
+                                        _LOGGER.info("  Guessed battery_voltage from value range: %.1fV", result["battery_voltage"])
+                                    elif 0 <= value <= 100:  # Typical SOC range
+                                        result["battery_soc"] = value
+                                        _LOGGER.info("  Guessed battery_soc from value range: %d%%", result["battery_soc"])
+                                    elif 200 <= value <= 500:  # Typical temperature range
+                                        result["battery_temp"] = value
+                                        _LOGGER.info("  Guessed battery_temp from value range: %d°C", result["battery_temp"])
                                     
                         except Exception as char_err:
                             _LOGGER.debug("  Could not read characteristic %s: %s", char.uuid, char_err)
+            
+            _LOGGER.info("=== END CHARACTERISTIC DISCOVERY ===")
+            
+            # Check if we found any data
+            found_data = any(value is not None for value in result.values())
+            if found_data:
+                _LOGGER.info("Alternative data reading successful for %s: %s", self.address, result)
+            else:
+                _LOGGER.warning("No data found through alternative reading for %s", self.address)
             
             return result
             
@@ -536,4 +583,117 @@ class BluPowClient:
             "last_successful_connection": self._last_successful_connection.isoformat() if self._last_successful_connection else None,
             "last_error": self._last_error,
         }
+
+    async def _try_different_characteristics(self, client: BleakClient) -> Dict[str, Any]:
+        """Try different characteristic UUIDs that might be used by Renogy devices."""
+        try:
+            _LOGGER.info("Trying different characteristic UUIDs for %s", self.address)
+            
+            # Common characteristic UUIDs that might be used by Renogy devices
+            possible_rx_uuids = [
+                "0000cd02-0000-1000-8000-00805f9b34fb",  # Original
+                "0000cd01-0000-1000-8000-00805f9b34fb",  # Alternative
+                "0000cd03-0000-1000-8000-00805f9b34fb",  # Another possibility
+                "0000cd04-0000-1000-8000-00805f9b34fb",  # Yet another
+                "0000cd05-0000-1000-8000-00805f9b34fb",  # And another
+            ]
+            
+            possible_tx_uuids = [
+                "0000cd01-0000-1000-8000-00805f9b34fb",  # Original
+                "0000cd02-0000-1000-8000-00805f9b34fb",  # Alternative
+                "0000cd03-0000-1000-8000-00805f9b34fb",  # Another possibility
+                "0000cd04-0000-1000-8000-00805f9b34fb",  # Yet another
+                "0000cd05-0000-1000-8000-00805f9b34fb",  # And another
+            ]
+            
+            # Get all services and characteristics
+            services = await client.get_services()
+            services_list = list(services)
+            
+            # Find all available characteristics
+            available_chars = []
+            for service in services_list:
+                for char in service.characteristics:
+                    available_chars.append(char.uuid)
+                    _LOGGER.info("Found characteristic: %s", char.uuid)
+            
+            # Try to find matching RX/TX characteristics
+            rx_char = None
+            tx_char = None
+            
+            for rx_uuid in possible_rx_uuids:
+                if rx_uuid in available_chars:
+                    rx_char = rx_uuid
+                    _LOGGER.info("Found RX characteristic: %s", rx_char)
+                    break
+            
+            for tx_uuid in possible_tx_uuids:
+                if tx_uuid in available_chars:
+                    tx_char = tx_uuid
+                    _LOGGER.info("Found TX characteristic: %s", tx_char)
+                    break
+            
+            if rx_char and tx_char:
+                _LOGGER.info("Found working RX/TX pair: %s / %s", rx_char, tx_char)
+                # Try to use these characteristics for register reading
+                try:
+                    # Use the found characteristics with a custom read method
+                    data = await self._read_registers_with_uuids(client, REG_BATTERY_SOC, 10, rx_char, tx_char)
+                    parsed_data = self._parse_data(data)
+                    return parsed_data
+                    
+                except Exception as err:
+                    _LOGGER.warning("Failed to use found RX/TX pair: %s", err)
+            
+            _LOGGER.warning("No suitable RX/TX characteristics found")
+            return self._get_default_register_data()
+            
+        except Exception as err:
+            _LOGGER.error("Error trying different characteristics: %s", err)
+            return self._get_default_register_data()
+
+    async def _read_registers_with_uuids(
+        self, client: BleakClient, start_register: int, count: int, rx_uuid: str, tx_uuid: str
+    ) -> bytearray:
+        """Read registers using specified RX/TX UUIDs."""
+        try:
+            # Clear any existing notifications
+            await self._clear_notification_queue()
+            
+            # Start listening for notifications
+            _LOGGER.debug("Starting notifications for device %s with RX UUID %s", self.address, rx_uuid)
+            await client.start_notify(rx_uuid, self._notification_handler)
+
+            try:
+                # Build the Modbus command
+                command = self._build_modbus_command(start_register, count)
+                _LOGGER.debug("Sending command to %s: %s", self.address, command.hex())
+
+                # Send the command
+                await client.write_gatt_char(tx_uuid, command, response=True)
+
+                # Wait for response
+                response = await self._wait_for_response()
+                _LOGGER.debug("Received response from %s: %s", self.address, response.hex())
+                
+                return response
+
+            finally:
+                # Always stop notifications
+                await self._stop_notifications_with_uuid(client, rx_uuid)
+                
+        except BleakError as err:
+            _LOGGER.error("BLE error reading registers from %s: %s", self.address, err)
+            raise
+        except Exception as err:
+            _LOGGER.error("Unexpected error reading registers from %s: %s", self.address, err)
+            raise
+
+    async def _stop_notifications_with_uuid(self, client: BleakClient, rx_uuid: str) -> None:
+        """Stop notifications with error handling using specified UUID."""
+        try:
+            await client.stop_notify(rx_uuid)
+            _LOGGER.debug("Stopped notifications for device %s with UUID %s", self.address, rx_uuid)
+        except Exception as err:
+            _LOGGER.debug("Error stopping notifications for %s: %s", self.address, err)
 
