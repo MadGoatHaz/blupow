@@ -14,6 +14,7 @@ from .const import (
     MODEL_NUMBER_CHAR_UUID,
     RENOGY_RX_CHAR_UUID,
     RENOGY_TX_CHAR_UUID,
+    REG_BATTERY_SOC,
     REG_BATTERY_VOLTAGE,
     REG_SOLAR_VOLTAGE,
 )
@@ -30,7 +31,6 @@ class BluPowClient:
         self._notification_queue: asyncio.Queue[bytearray] = asyncio.Queue()
         self._max_retries = 3
 
-    @property
     def name(self) -> str:
         """Return the name of the device."""
         return self._device.name or self._device.address
@@ -39,14 +39,9 @@ class BluPowClient:
         """Handle incoming notifications."""
         await self._notification_queue.put(data)
 
-    async def _get_client(self) -> BleakClient:
-        """Get a BleakClient instance for the device."""
-        return async_get_connectable_bleak_client(self._device)
-
     async def get_data(self) -> dict[str, Any]:
         """Read device data."""
-        client = await self._get_client()
-        try:
+        async with BleakClient(self._device) as client:
             # First, try to get the model number
             try:
                 raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
@@ -59,7 +54,8 @@ class BluPowClient:
 
             # Now, try to get the register data
             try:
-                data = await self._read_registers(client, REG_BATTERY_VOLTAGE, 7)
+                # Read a larger block of data starting from the lowest register address
+                data = await self._read_registers(client, REG_BATTERY_SOC, 10)
                 parsed_data = self._parse_data(data)
                 return {"model_number": model, **parsed_data}
             except Exception as e:
@@ -69,10 +65,12 @@ class BluPowClient:
                     "model_number": model,
                     "battery_voltage": None,
                     "solar_voltage": None,
+                    "battery_current": None,
+                    "solar_current": None,
+                    "battery_soc": None,
+                    "battery_temp": None,
+                    "solar_power": None,
                 }
-        finally:
-            if client.is_connected:
-                await client.disconnect()
 
     async def _read_registers(
         self, client: BleakClient, start_register: int, count: int
@@ -146,18 +144,22 @@ class BluPowClient:
 
         payload = data[3 : 3 + data_len]
 
-        battery_voltage = None
-        solar_voltage = None
-
-        if len(payload) >= 2:
-            battery_voltage = int.from_bytes(payload[0:2], "big") / 10
-
-        if len(payload) >= 14:
-            solar_voltage = int.from_bytes(payload[12:14], "big") / 10
+        def get_value(reg_offset: int, multiplier: float = 1.0) -> float | None:
+            """Safely extract and scale a value from the payload."""
+            start = (reg_offset - REG_BATTERY_SOC) * 2
+            if start + 2 <= len(payload):
+                raw_value = int.from_bytes(payload[start : start + 2], "big")
+                return raw_value * multiplier
+            return None
 
         return {
-            "battery_voltage": battery_voltage,
-            "solar_voltage": solar_voltage,
+            "battery_soc": get_value(0x0100),
+            "battery_voltage": get_value(0x0101, 0.1),
+            "battery_current": get_value(0x0102, 0.01),
+            "battery_temp": get_value(0x0103),  # Needs special parsing for temp
+            "solar_voltage": get_value(0x0107, 0.1),
+            "solar_current": get_value(0x0108, 0.01),
+            "solar_power": get_value(0x0109),
         }
 
     async def disconnect(self):
