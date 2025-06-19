@@ -40,6 +40,10 @@ Custom Home Assistant integration for Renogy Bluetooth-enabled solar devices (Bl
    - **Root Cause**: A previous refactoring hardcoded the coordinator's update interval as an integer (`30`) instead of the required `timedelta` object, causing an `AttributeError: 'int' object has no attribute 'total_seconds'` on startup.
    - **Solution**: Re-implemented the configurable update interval. The `update_interval` is now correctly fetched from the config entry, passed to the coordinator, and instantiated as a `timedelta(seconds=update_interval)`. This required updates to `coordinator.py`, `__init__.py`, and `const.py`.
 
+8. **Coordinator Data Property Conflict** - FIXED (Latest)
+   - **Root Cause**: The custom `data` property in `BluPowDataUpdateCoordinator` conflicted with the parent class's read-only `data` property, causing `property 'data' of 'BluPowDataUpdateCoordinator' object has no setter` errors.
+   - **Solution**: Removed the custom `data` property and updated all methods to work with the parent class's built-in data handling mechanism. The coordinator now properly returns data from `_async_update_data()` which the parent class manages internally.
+
 ### 🔄 CURRENT ISSUES
 1. **Bluetooth Connection Issues** - ONGOING
    - Previous errors: "Timeout waiting for BluetoothDeviceConnectionResponse"
