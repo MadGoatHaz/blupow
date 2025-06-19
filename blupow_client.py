@@ -7,9 +7,6 @@ from bleak import BleakClient
 from bleak.exc import BleakError
 from bleak.backends.device import BLEDevice
 
-from homeassistant.components.bluetooth import async_get_connectable_bleak_client
-from homeassistant.core import HomeAssistant
-
 from .const import (
     MODEL_NUMBER_CHAR_UUID,
     RENOGY_RX_CHAR_UUID,
