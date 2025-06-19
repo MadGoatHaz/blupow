@@ -2,14 +2,17 @@
 
 ![BluPow Project Logo](brand/blupow/logo.png)
 
-Connect your Renogy Bluetooth-enabled devices to Home Assistant. This integration allows you to monitor your solar charge controller, inverter, or smart battery directly from your Home Assistant dashboard.
+Connect your Renogy Bluetooth-enabled devices to Home Assistant with this powerful and reliable integration. BluPow allows you to monitor your solar charge controller, inverter, or smart battery directly from your Home Assistant dashboard.
+
+This integration has been significantly updated to provide robust error handling, improved device compatibility (especially for ESP32-based devices), and detailed logging for easier troubleshooting.
 
 ## Features
 
 -   **Local Push:** Data is updated in real-time without relying on the cloud.
--   **Device Support:** Designed for Renogy devices equipped with a Bluetooth module (e.g., BT-1, BT-2) or built-in Bluetooth.
+-   **Device Support:** Designed for Renogy devices equipped with a Bluetooth module (e.g., BT-1, BT-2) or built-in Bluetooth. Now with improved support for a wider range of devices, including those based on ESP32.
 -   **Auto-discovery:** (Planned for future release)
 -   **Rich Sensor Data:** Provides a wide range of sensors for comprehensive monitoring.
+-   **Enhanced Reliability:** Includes advanced connection retry logic and error handling to ensure a stable connection.
 
 ## Supported Sensors
 
@@ -46,8 +49,14 @@ Depending on your device, the following sensors may be available:
 
 ## Troubleshooting
 
--   **Device not found:** Ensure your device is powered on and within Bluetooth range of your Home Assistant server. Check that the Bluetooth adapter on your Home Assistant machine is enabled and working correctly.
--   **Connection errors:** Other applications or integrations can sometimes interfere with Bluetooth connections. Try disabling other Bluetooth integrations temporarily to see if it resolves the issue.
+-   **Device not found:** Ensure your device is powered on and within Bluetooth range of your Home Assistant server. Check that the Bluetooth adapter on your Home Assistant machine is enabled and working correctly. If you continue to have issues, enable debug logging for this integration to get more insight.
+-   **Connection errors:** Other applications or integrations can sometimes interfere with Bluetooth connections. This integration is designed to be resilient, but you can try disabling other Bluetooth integrations temporarily to see if it resolves the issue. The latest version includes specific workarounds for common ESP32 connection problems.
+-   **Enable Debug Logging:** To get detailed logs for troubleshooting, add the following to your `configuration.yaml`:
+    ```yaml
+    logger:
+      logs:
+        custom_components.blupow: debug
+    ```
 
 ## Contributing
 

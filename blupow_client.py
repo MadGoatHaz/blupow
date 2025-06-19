@@ -31,6 +31,7 @@ class BluPowClient:
             self._last_error = None
             self._max_retries = 3
             self._base_timeout = 20.0  # Increased from 15.0
+            self._discovered_characteristics = {}  # Cache discovered characteristics
             
             _LOGGER.info("BluPow client initialized for device: %s (%s)", 
                         device.name or "Unknown", device.address)
@@ -198,51 +199,78 @@ class BluPowClient:
         """Get model number with error handling."""
         try:
             _LOGGER.debug("Reading model number from device %s", self.address)
-            raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
             
-            # Log the raw data for debugging
-            _LOGGER.debug("Raw model number data: %s (hex: %s)", raw_model, raw_model.hex())
-            
-            # Try to decode as UTF-8
+            # Try to read model number characteristic
             try:
-                model = raw_model.decode("utf-8").strip()
-                _LOGGER.debug("Decoded as UTF-8: %s", model)
-                
-                # Handle the specific format we're seeing: "TC,R2#4,1,248,S"
-                if model and ',' in model:
-                    # Split by comma and take the first part as the main model
-                    parts = model.split(',')
-                    if len(parts) >= 2:
-                        main_model = parts[0].strip()
-                        sub_model = parts[1].strip()
-                        # Clean up the sub-model (remove special characters)
-                        sub_model = ''.join(char for char in sub_model if char.isalnum() or char in '.-_')
-                        model = f"{main_model}-{sub_model}"
-                        _LOGGER.debug("Parsed model from comma-separated format: %s", model)
-                
-            except UnicodeDecodeError:
-                # If UTF-8 fails, try to interpret as hex or other format
-                _LOGGER.debug("UTF-8 decode failed, trying alternative parsing")
-                model = raw_model.hex().upper()
-            
-            # Clean up the model number
-            if model and model != "Unknown":
-                # Remove any non-printable characters but keep alphanumeric, dots, dashes, and underscores
-                model = ''.join(char for char in model if char.isprintable() and (char.isalnum() or char in ',.-_#'))
-                _LOGGER.info("Successfully read model number: %s for %s", model, self.address)
+                model_data = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
+                model = model_data.decode('utf-8', errors='ignore').strip()
+                _LOGGER.debug("Model number: %s", model)
                 return model
-            else:
-                _LOGGER.warning("Empty or invalid model number from %s", self.address)
+            except Exception as model_err:
+                _LOGGER.debug("Could not read model number: %s", model_err)
                 return "Unknown"
                 
         except Exception as err:
-            _LOGGER.warning("Could not read model number from %s: %s", self.address, err)
+            _LOGGER.error("Error getting model number: %s", err)
             return "Unknown"
+
+    async def _discover_characteristics(self, client: BleakClient) -> Dict[str, Any]:
+        """Discover available characteristics and cache them."""
+        try:
+            if hasattr(client, 'services'):
+                # Use the services property instead of get_services() method
+                services = client.services
+            else:
+                # Fallback for older bleak versions
+                services = await client.get_services()
+            
+            # Convert to list to avoid BleakGATTServiceCollection issues
+            services_list = list(services)
+            _LOGGER.debug("Found %d services for device %s", len(services_list), self.address)
+            
+            characteristics = {
+                'rx_chars': [],
+                'tx_chars': [],
+                'readable_chars': [],
+                'all_chars': []
+            }
+            
+            for service in services_list:
+                _LOGGER.debug("Service: %s - %s", service.uuid, service.description or "Unknown")
+                for char in service.characteristics:
+                    char_info = {
+                        'uuid': char.uuid,
+                        'description': char.description or "Unknown",
+                        'properties': char.properties,
+                        'service_uuid': service.uuid
+                    }
+                    characteristics['all_chars'].append(char_info)
+                    
+                    # Categorize characteristics
+                    if "notify" in char.properties or "indicate" in char.properties:
+                        characteristics['rx_chars'].append(char_info)
+                    if "write" in char.properties or "write-without-response" in char.properties:
+                        characteristics['tx_chars'].append(char_info)
+                    if "read" in char.properties:
+                        characteristics['readable_chars'].append(char_info)
+                    
+                    _LOGGER.debug("  Characteristic: %s - %s (props: %s)", 
+                                 char.uuid, char.description or "Unknown", char.properties)
+            
+            self._discovered_characteristics = characteristics
+            return characteristics
+            
+        except Exception as err:
+            _LOGGER.error("Error discovering characteristics: %s", err)
+            return {}
 
     async def _get_register_data(self, client: BleakClient) -> Dict[str, Any]:
         """Get register data with error handling."""
         try:
             _LOGGER.debug("Reading register data from device %s", self.address)
+            
+            # Discover characteristics first
+            characteristics = await self._discover_characteristics(client)
             
             # Try to read register data with original UUIDs
             try:
@@ -257,7 +285,7 @@ class BluPowClient:
                 # Try different characteristic UUIDs
                 _LOGGER.info("Trying different characteristic UUIDs for %s", self.address)
                 try:
-                    different_char_data = await self._try_different_characteristics(client)
+                    different_char_data = await self._try_different_characteristics(client, characteristics)
                     if any(value is not None for value in different_char_data.values()):
                         _LOGGER.info("Successfully read data using different characteristics")
                         return different_char_data
@@ -266,22 +294,16 @@ class BluPowClient:
                 
                 # Try alternative approach - read individual characteristics
                 _LOGGER.info("Trying alternative data reading approach for %s", self.address)
-                return await self._try_alternative_data_reading(client)
+                return await self._try_alternative_data_reading(client, characteristics)
                 
         except Exception as err:
             _LOGGER.warning("Could not read register data from %s: %s", self.address, err)
             return self._get_default_register_data()
 
-    async def _try_alternative_data_reading(self, client: BleakClient) -> Dict[str, Any]:
+    async def _try_alternative_data_reading(self, client: BleakClient, characteristics: Dict[str, Any]) -> Dict[str, Any]:
         """Try alternative methods to read device data."""
         try:
             _LOGGER.debug("Attempting alternative data reading for %s", self.address)
-            
-            # Get all services and characteristics
-            services = await client.get_services()
-            # Convert to list to avoid BleakGATTServiceCollection issues
-            services_list = list(services)
-            _LOGGER.debug("Found %d services for device %s", len(services_list), self.address)
             
             result = self._get_default_register_data()
             
@@ -289,59 +311,53 @@ class BluPowClient:
             _LOGGER.info("=== DEVICE CHARACTERISTIC DISCOVERY ===")
             _LOGGER.info("Device: %s (%s)", self.name, self.address)
             
-            for service in services_list:
-                _LOGGER.info("Service: %s - %s", service.uuid, service.description or "Unknown")
-                for char in service.characteristics:
-                    _LOGGER.info("  Characteristic: %s - %s (props: %s)", 
-                                 char.uuid, char.description or "Unknown", char.properties)
+            # Try to read readable characteristics
+            for char_info in characteristics.get('readable_chars', []):
+                try:
+                    data = await client.read_gatt_char(char_info['uuid'])
+                    _LOGGER.info("  Read %s: %s (hex: %s)", char_info['uuid'], data, data.hex())
                     
-                    # Try to read readable characteristics
-                    if "read" in char.properties:
-                        try:
-                            data = await client.read_gatt_char(char.uuid)
-                            _LOGGER.info("  Read %s: %s (hex: %s)", char.uuid, data, data.hex())
+                    # Try to parse as numeric data
+                    if len(data) >= 2:
+                        value = int.from_bytes(data[:2], "big")
+                        _LOGGER.debug("  Parsed as 16-bit value: %d", value)
+                        
+                        # Map characteristic UUIDs to sensor names if possible
+                        # Look for patterns in the data or characteristic properties
+                        if "battery" in char_info['description'].lower() or "voltage" in char_info['description'].lower():
+                            result["battery_voltage"] = value / 10.0  # Assume 0.1V resolution
+                            _LOGGER.info("  Mapped to battery_voltage: %.1fV", result["battery_voltage"])
+                        elif "current" in char_info['description'].lower():
+                            result["battery_current"] = value / 100.0  # Assume 0.01A resolution
+                            _LOGGER.info("  Mapped to battery_current: %.2fA", result["battery_current"])
+                        elif "soc" in char_info['description'].lower() or "charge" in char_info['description'].lower():
+                            result["battery_soc"] = value
+                            _LOGGER.info("  Mapped to battery_soc: %d%%", result["battery_soc"])
+                        elif "temp" in char_info['description'].lower():
+                            result["battery_temp"] = value
+                            _LOGGER.info("  Mapped to battery_temp: %d°C", result["battery_temp"])
+                        elif "solar" in char_info['description'].lower():
+                            # Try to determine if it's voltage or current based on value range
+                            if value > 1000:  # Likely voltage in 0.1V units
+                                result["solar_voltage"] = value / 10.0
+                                _LOGGER.info("  Mapped to solar_voltage: %.1fV", result["solar_voltage"])
+                            else:  # Likely current in 0.01A units
+                                result["solar_current"] = value / 100.0
+                                _LOGGER.info("  Mapped to solar_current: %.2fA", result["solar_current"])
+                        else:
+                            # Try to guess based on value ranges
+                            if 1200 <= value <= 1500:  # Typical battery voltage range (12-15V in 0.1V units)
+                                result["battery_voltage"] = value / 10.0
+                                _LOGGER.info("  Guessed battery_voltage from value range: %.1fV", result["battery_voltage"])
+                            elif 0 <= value <= 100:  # Typical SOC range
+                                result["battery_soc"] = value
+                                _LOGGER.info("  Guessed battery_soc from value range: %d%%", result["battery_soc"])
+                            elif 200 <= value <= 500:  # Typical temperature range
+                                result["battery_temp"] = value
+                                _LOGGER.info("  Guessed battery_temp from value range: %d°C", result["battery_temp"])
                             
-                            # Try to parse as numeric data
-                            if len(data) >= 2:
-                                value = int.from_bytes(data[:2], "big")
-                                _LOGGER.debug("  Parsed as 16-bit value: %d", value)
-                                
-                                # Map characteristic UUIDs to sensor names if possible
-                                # Look for patterns in the data or characteristic properties
-                                if "battery" in (char.description or "").lower() or "voltage" in (char.description or "").lower():
-                                    result["battery_voltage"] = value / 10.0  # Assume 0.1V resolution
-                                    _LOGGER.info("  Mapped to battery_voltage: %.1fV", result["battery_voltage"])
-                                elif "current" in (char.description or "").lower():
-                                    result["battery_current"] = value / 100.0  # Assume 0.01A resolution
-                                    _LOGGER.info("  Mapped to battery_current: %.2fA", result["battery_current"])
-                                elif "soc" in (char.description or "").lower() or "charge" in (char.description or "").lower():
-                                    result["battery_soc"] = value
-                                    _LOGGER.info("  Mapped to battery_soc: %d%%", result["battery_soc"])
-                                elif "temp" in (char.description or "").lower():
-                                    result["battery_temp"] = value
-                                    _LOGGER.info("  Mapped to battery_temp: %d°C", result["battery_temp"])
-                                elif "solar" in (char.description or "").lower():
-                                    # Try to determine if it's voltage or current based on value range
-                                    if value > 1000:  # Likely voltage in 0.1V units
-                                        result["solar_voltage"] = value / 10.0
-                                        _LOGGER.info("  Mapped to solar_voltage: %.1fV", result["solar_voltage"])
-                                    else:  # Likely current in 0.01A units
-                                        result["solar_current"] = value / 100.0
-                                        _LOGGER.info("  Mapped to solar_current: %.2fA", result["solar_current"])
-                                else:
-                                    # Try to guess based on value ranges
-                                    if 1200 <= value <= 1500:  # Typical battery voltage range (12-15V in 0.1V units)
-                                        result["battery_voltage"] = value / 10.0
-                                        _LOGGER.info("  Guessed battery_voltage from value range: %.1fV", result["battery_voltage"])
-                                    elif 0 <= value <= 100:  # Typical SOC range
-                                        result["battery_soc"] = value
-                                        _LOGGER.info("  Guessed battery_soc from value range: %d%%", result["battery_soc"])
-                                    elif 200 <= value <= 500:  # Typical temperature range
-                                        result["battery_temp"] = value
-                                        _LOGGER.info("  Guessed battery_temp from value range: %d°C", result["battery_temp"])
-                                    
-                        except Exception as char_err:
-                            _LOGGER.debug("  Could not read characteristic %s: %s", char.uuid, char_err)
+                except Exception as char_err:
+                    _LOGGER.debug("  Could not read characteristic %s: %s", char_info['uuid'], char_err)
             
             _LOGGER.info("=== END CHARACTERISTIC DISCOVERY ===")
             
@@ -396,7 +412,13 @@ class BluPowClient:
             
             # Check if characteristics exist before trying to use them
             try:
-                services = await client.get_services()
+                if hasattr(client, 'services'):
+                    # Use the services property instead of get_services() method
+                    services = client.services
+                else:
+                    # Fallback for older bleak versions
+                    services = await client.get_services()
+                
                 # Convert to list to avoid BleakGATTServiceCollection issues
                 services_list = list(services)
                 rx_char_found = False
@@ -584,7 +606,7 @@ class BluPowClient:
             "last_error": self._last_error,
         }
 
-    async def _try_different_characteristics(self, client: BleakClient) -> Dict[str, Any]:
+    async def _try_different_characteristics(self, client: BleakClient, characteristics: Dict[str, Any]) -> Dict[str, Any]:
         """Try different characteristic UUIDs that might be used by Renogy devices."""
         try:
             _LOGGER.info("Trying different characteristic UUIDs for %s", self.address)
@@ -606,16 +628,8 @@ class BluPowClient:
                 "0000cd05-0000-1000-8000-00805f9b34fb",  # And another
             ]
             
-            # Get all services and characteristics
-            services = await client.get_services()
-            services_list = list(services)
-            
-            # Find all available characteristics
-            available_chars = []
-            for service in services_list:
-                for char in service.characteristics:
-                    available_chars.append(char.uuid)
-                    _LOGGER.info("Found characteristic: %s", char.uuid)
+            # Find all available characteristics from discovery
+            available_chars = [char['uuid'] for char in characteristics.get('all_chars', [])]
             
             # Try to find matching RX/TX characteristics
             rx_char = None
