@@ -107,15 +107,23 @@ class BluPowClient:
                     return True
             
             # Check if device is reachable through known proxy addresses
-            # User's proxy: esp32-bluetooth-proxy-2105e4 at 192.168.51.151
+            # User's multi-proxy setup for extended coverage
             known_proxies = [
-                'esp32-bluetooth-proxy-2105e4',
-                'a0:b7:65:21:05:e6',  # User's proxy MAC
-                '192.168.51.151'     # User's proxy IP
+                ('esp32-bluetooth-proxy-2105e4', '192.168.51.151', 'Primary - Tested (+10 dB improvement)'),
+                ('proxy-2', '192.168.51.207', 'Secondary - Available for testing'),
+                ('proxy-3', '192.168.51.109', 'Tertiary - Available for testing'),
+                ('a0:b7:65:21:05:e6', '192.168.51.151', 'Primary proxy MAC')
             ]
             
-            # Log proxy detection attempt
+            # Log proxy detection attempt with all available proxies
             _LOGGER.debug(f"Checking for ESPHome proxy support for {self.address}")
+            _LOGGER.info(f"📡 Available ESPHome Bluetooth Proxies:")
+            for name, ip, description in known_proxies[:3]:  # Log first 3 (exclude MAC)
+                _LOGGER.info(f"   🔹 {name} ({ip}) - {description}")
+            
+            # TODO: Future enhancement - actively test which proxy provides best signal
+            # This would require integration with Home Assistant's Bluetooth component
+            # to determine which proxy is actually being used for connections
             
             return False  # Will be True if proxy is actively being used
             
