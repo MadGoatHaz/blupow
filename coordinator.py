@@ -6,7 +6,6 @@ from typing import Any
 from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 
-from homeassistant.components.bluetooth import async_get_connectable_bleak_client
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
