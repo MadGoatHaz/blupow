@@ -19,26 +19,51 @@ DOMAIN = "blupow"
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up BluPow from a config entry."""
-    address = entry.data[CONF_ADDRESS]
-    
-    ble_device = bluetooth.async_ble_device_from_address(hass, address)
-    if not ble_device:
-        raise ConfigEntryNotReady(f"Could not find BLE device with address {address}")
+    try:
+        address = entry.data[CONF_ADDRESS]
+        _LOGGER.info("Setting up BluPow integration for address: %s", address)
+        
+        ble_device = bluetooth.async_ble_device_from_address(hass, address)
+        if not ble_device:
+            _LOGGER.error("Could not find BLE device with address %s", address)
+            raise ConfigEntryNotReady(f"Could not find BLE device with address {address}")
 
-    # Create the client first
-    client = BluPowClient(ble_device)
-    
-    # Create the coordinator with the client
-    coordinator = BluPowDataUpdateCoordinator(hass, client)
-    
-    # Ensure we have initial data before setting up platforms
-    await coordinator.async_config_entry_first_refresh()
+        _LOGGER.info("Found BLE device: %s (%s)", ble_device.name, ble_device.address)
 
-    entry.runtime_data = coordinator
+        # Create the client first
+        client = BluPowClient(ble_device)
+        _LOGGER.info("Created BluPow client")
+        
+        # Create the coordinator with the client
+        coordinator = BluPowDataUpdateCoordinator(hass, client)
+        _LOGGER.info("Created BluPow coordinator")
+        
+        # Verify coordinator is properly initialized
+        if not coordinator:
+            _LOGGER.error("Failed to create coordinator")
+            raise ConfigEntryNotReady("Failed to create coordinator")
+        
+        # Ensure we have initial data before setting up platforms
+        _LOGGER.info("Performing initial coordinator refresh")
+        await coordinator.async_config_entry_first_refresh()
+        
+        # Verify coordinator has data
+        if not hasattr(coordinator, 'data') or coordinator.data is None:
+            _LOGGER.error("Coordinator data is None after initialization")
+            raise ConfigEntryNotReady("Coordinator data is None after initialization")
+        
+        _LOGGER.info("Coordinator initialized successfully with data: %s", coordinator.data)
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        entry.runtime_data = coordinator
 
-    return True
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+        _LOGGER.info("BluPow integration setup completed successfully")
+
+        return True
+        
+    except Exception as err:
+        _LOGGER.error("Failed to set up BluPow integration: %s", err)
+        raise ConfigEntryNotReady(f"Failed to set up BluPow integration: {err}")
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
