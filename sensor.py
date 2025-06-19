@@ -20,6 +20,20 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         name="Model Number",
         icon="mdi:information-outline",
     ),
+    SensorEntityDescription(
+        key="battery_voltage",
+        name="Battery Voltage",
+        icon="mdi:battery",
+        device_class="voltage",
+        unit_of_measurement="V",
+    ),
+    SensorEntityDescription(
+        key="solar_voltage",
+        name="Solar Voltage",
+        icon="mdi:solar-power",
+        device_class="voltage",
+        unit_of_measurement="V",
+    ),
 )
 
 
