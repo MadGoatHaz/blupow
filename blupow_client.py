@@ -10,6 +10,10 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from bleak.backends.device import BLEDevice
 
+from homeassistant.components.bluetooth.const import BluetoothScanningMode
+from homeassistant.components.bluetooth.manager import async_get_scanner
+from homeassistant.helpers.service_info.bluetooth import BluetoothServiceInfoBleak
+
 from .const import (
     MODEL_NUMBER_CHAR_UUID,
     RENOGY_RX_CHAR_UUID,
@@ -36,9 +40,10 @@ class BluPowClient:
 
     async def get_data(self) -> dict[str, Any]:
         """Read device data."""
-        async with bluetooth.async_get_bleak_client_for_device(
-            self._hass, self._device
-        ) as client:
+        scanner = async_get_scanner(self._hass)
+        if (
+            client := scanner.async_get_bleak_client_for_device(self._device)
+        ) is not None:
             try:
                 # First, get the model number
                 raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
@@ -64,6 +69,10 @@ class BluPowClient:
                     "Unexpected error communicating with %s: %s", self._device.address, e
                 )
                 raise
+        else:
+            raise BleakError(
+                f"Device {self._device.address} not available for connection"
+            )
 
     async def _read_registers(
         self, client: BleakClient, start_register: int, count: int
