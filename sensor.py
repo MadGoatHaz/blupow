@@ -100,7 +100,7 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
             if not coordinator:
                 _LOGGER.warning("Creating device info with minimal data - no coordinator")
                 return DeviceInfo(
-                    connections={},
+                    identifiers={(DOMAIN, "blupow_fallback")},
                     name="BluPow Device",
                     manufacturer="BluPow",
                     model="Unknown",
@@ -108,8 +108,10 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
             
             if not coordinator.ble_device:
                 _LOGGER.warning("Creating device info with minimal data - no BLE device")
+                # Use the client address as identifier when BLE device is not available
+                device_id = coordinator.client.address if coordinator.client else "unknown"
                 return DeviceInfo(
-                    connections={},
+                    identifiers={(DOMAIN, device_id)},
                     name="BluPow Device",
                     manufacturer="BluPow",
                     model="Unknown",
@@ -127,6 +129,7 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
 
             return DeviceInfo(
                 connections={("bluetooth", device_address)},
+                identifiers={(DOMAIN, device_address)},
                 name=device_name,
                 manufacturer="BluPow",
                 model=model,
@@ -135,7 +138,7 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
         except Exception as err:
             _LOGGER.error("Failed to create device info: %s", err)
             return DeviceInfo(
-                connections={},
+                identifiers={(DOMAIN, "blupow_error")},
                 name="BluPow Device",
                 manufacturer="BluPow",
                 model="Unknown",

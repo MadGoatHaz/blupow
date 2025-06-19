@@ -24,15 +24,16 @@ detect_ha_environment() {
     
     # Check for Docker installation (common paths)
     DOCKER_PATHS=(
-        "/home/madgoat/opt/homeassistant/config"
-        "/home/homeassistant/.homeassistant"
-        "/config"
-        "/usr/share/homeassistant"
+        "$HOME/opt/homeassistant/config"
+        "$HOME/homeassistant/config"
         "/opt/homeassistant/config"
+        "/home/homeassistant/.homeassistant"
+        "/usr/share/homeassistant"
+        "/config"
     )
     
     for path in "${DOCKER_PATHS[@]}"; do
-        if [ -d "$path" ]; then
+        if [ -d "$path" ] && [ -f "$path/configuration.yaml" ]; then
             echo "🐳 Detected: Docker Home Assistant at $path"
             HA_CONFIG_DIR="$path"
             HA_TYPE="docker"
