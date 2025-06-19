@@ -76,11 +76,20 @@ class BluPowClient:
                 _LOGGER.info("Starting data retrieval for device %s (attempt %d/%d)", 
                             self.address, attempt + 1, self._max_retries)
                 
-                # Calculate timeout with exponential backoff
-                timeout = self._base_timeout * (2 ** attempt)
+                # Calculate timeout with exponential backoff, but cap at 30 seconds
+                timeout = min(self._base_timeout * (2 ** attempt), 30.0)
+                
+                # Add connection delay for ESP32 devices to avoid connection conflicts
+                if attempt > 0:
+                    delay = 3 + attempt * 2  # 5, 7, 9 seconds for retries
+                    _LOGGER.info("Waiting %d seconds before connection attempt...", delay)
+                    await asyncio.sleep(delay)
                 
                 async with BleakClient(self._device, timeout=timeout) as client:
                     _LOGGER.debug("Connected to device %s (timeout: %.1fs)", self.address, timeout)
+                    
+                    # Wait a moment for connection to stabilize
+                    await asyncio.sleep(0.5)
                     
                     # Get model number
                     model = await self._get_model_number(client)
@@ -121,13 +130,24 @@ class BluPowClient:
                 _LOGGER.error("%s (attempt %d/%d)", error_msg, attempt + 1, self._max_retries)
                 self._last_error = error_msg
                 
-                if attempt < self._max_retries - 1:
-                    # Wait before retry with exponential backoff
-                    wait_time = 2 ** attempt
-                    _LOGGER.info("Waiting %d seconds before retry...", wait_time)
-                    await asyncio.sleep(wait_time)
+                # Special handling for ESP32 connection errors
+                if "ESP_GATT_CONN_FAIL_ESTABLISH" in str(err):
+                    _LOGGER.warning("ESP32 connection establishment failed - this is common with these devices")
+                    # Longer delay for ESP32 connection issues
+                    if attempt < self._max_retries - 1:
+                        wait_time = 5 + attempt * 3  # 8, 11, 14 seconds
+                        _LOGGER.info("Waiting %d seconds before ESP32 retry...", wait_time)
+                        await asyncio.sleep(wait_time)
+                    else:
+                        return self._get_error_data(error_msg)
                 else:
-                    return self._get_error_data(error_msg)
+                    if attempt < self._max_retries - 1:
+                        # Wait before retry with exponential backoff
+                        wait_time = 2 ** attempt
+                        _LOGGER.info("Waiting %d seconds before retry...", wait_time)
+                        await asyncio.sleep(wait_time)
+                    else:
+                        return self._get_error_data(error_msg)
                     
             except asyncio.TimeoutError as err:
                 error_msg = f"Timeout connecting to device {self.address}"
@@ -187,6 +207,19 @@ class BluPowClient:
             try:
                 model = raw_model.decode("utf-8").strip()
                 _LOGGER.debug("Decoded as UTF-8: %s", model)
+                
+                # Handle the specific format we're seeing: "TC,R2#4,1,248,S"
+                if model and ',' in model:
+                    # Split by comma and take the first part as the main model
+                    parts = model.split(',')
+                    if len(parts) >= 2:
+                        main_model = parts[0].strip()
+                        sub_model = parts[1].strip()
+                        # Clean up the sub-model (remove special characters)
+                        sub_model = ''.join(char for char in sub_model if char.isalnum() or char in '.-_')
+                        model = f"{main_model}-{sub_model}"
+                        _LOGGER.debug("Parsed model from comma-separated format: %s", model)
+                
             except UnicodeDecodeError:
                 # If UTF-8 fails, try to interpret as hex or other format
                 _LOGGER.debug("UTF-8 decode failed, trying alternative parsing")
@@ -194,8 +227,8 @@ class BluPowClient:
             
             # Clean up the model number
             if model and model != "Unknown":
-                # Remove any non-printable characters
-                model = ''.join(char for char in model if char.isprintable() or char in ',.#')
+                # Remove any non-printable characters but keep alphanumeric, dots, dashes, and underscores
+                model = ''.join(char for char in model if char.isprintable() and (char.isalnum() or char in ',.-_#'))
                 _LOGGER.info("Successfully read model number: %s for %s", model, self.address)
                 return model
             else:
@@ -236,11 +269,13 @@ class BluPowClient:
             
             # Get all services and characteristics
             services = await client.get_services()
-            _LOGGER.debug("Found %d services for device %s", len(services), self.address)
+            # Convert to list to avoid BleakGATTServiceCollection issues
+            services_list = list(services)
+            _LOGGER.debug("Found %d services for device %s", len(services_list), self.address)
             
             result = self._get_default_register_data()
             
-            for service in services:
+            for service in services_list:
                 _LOGGER.debug("Service %s: %s", service.uuid, service.description)
                 for char in service.characteristics:
                     _LOGGER.debug("  Characteristic %s: %s (props: %s)", 
@@ -315,10 +350,12 @@ class BluPowClient:
             # Check if characteristics exist before trying to use them
             try:
                 services = await client.get_services()
+                # Convert to list to avoid BleakGATTServiceCollection issues
+                services_list = list(services)
                 rx_char_found = False
                 tx_char_found = False
                 
-                for service in services:
+                for service in services_list:
                     for char in service.characteristics:
                         if char.uuid == RENOGY_RX_CHAR_UUID:
                             rx_char_found = True

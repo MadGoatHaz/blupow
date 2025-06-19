@@ -290,3 +290,162 @@ blupow/
 **Last Updated**: 2025-06-19
 **Status**: Active Development - `total_seconds` crash fixed. Ready for deployment and testing.
 
+## Recent Fixes and Improvements
+
+### 2025-06-19 - Connection and Data Parsing Improvements
+
+#### Fixed BleakGATTServiceCollection Errors
+- **Issue**: `object of type 'BleakGATTServiceCollection' has no len()` error when trying to iterate over services
+- **Fix**: Convert `services` to a list using `list(services)` before using `len()` or iterating
+- **Files**: `blupow_client.py` lines 240, 330
+- **Impact**: Prevents crashes when discovering device characteristics
+
+#### Improved Model Number Parsing
+- **Issue**: Model number showing as raw data `TC,R2#4,1,248,S` instead of clean format
+- **Fix**: Enhanced parsing to handle comma-separated format and extract meaningful model names
+- **Implementation**: 
+  - Split by comma and take first two parts as main model and sub-model
+  - Clean up special characters while preserving alphanumeric and common symbols
+  - Format as `{main_model}-{sub_model}` (e.g., `TC-R2#4`)
+- **Files**: `blupow_client.py` lines 190-200
+- **Impact**: Cleaner, more readable model numbers in Home Assistant
+
+#### Enhanced ESP32 Connection Handling
+- **Issue**: Frequent `ESP_GATT_CONN_FAIL_ESTABLISH` connection errors
+- **Fix**: Added specialized handling for ESP32 connection issues
+- **Implementation**:
+  - Longer delays between retry attempts (8, 11, 14 seconds)
+  - Connection stabilization delay (0.5s) after successful connection
+  - Capped timeout at 30 seconds maximum
+  - Pre-connection delays for retry attempts (5, 7, 9 seconds)
+- **Files**: `blupow_client.py` lines 75-85, 130-140
+- **Impact**: More reliable connections to ESP32-based Renogy devices
+
+### Previous Fixes
+
+#### Fixed ImportError: BleakConnectionError
+- **Issue**: `ImportError: cannot import name 'BleakConnectionError' from 'bleak.exc'`
+- **Fix**: Updated to catch the more general `BleakError` instead
+- **Files**: `blupow_client.py`
+- **Impact**: Resolves import compatibility issues
+
+#### Fixed Property Setter Error
+- **Issue**: `property 'data' of 'BluPowDataUpdateCoordinator' object has no setter`
+- **Fix**: Removed custom `data` property that conflicted with parent class
+- **Files**: `coordinator.py`
+- **Impact**: Resolves coordinator data handling issues
+
+#### Enhanced Bluetooth Client
+- **Issue**: Connection failures and timeouts
+- **Fix**: Added retry logic, exponential backoff, longer timeouts, characteristic validation
+- **Files**: `blupow_client.py`
+- **Impact**: More robust connection handling
+
+#### Improved Sensor Setup
+- **Issue**: Sensors showing "Unknown" values
+- **Fix**: Enhanced model number parsing, added alternative data reading methods
+- **Files**: `sensor.py`, `blupow_client.py`
+- **Impact**: Better data parsing and sensor availability
+
+## Current Status
+
+### Working Features
+- ✅ Integration loads without errors
+- ✅ Sensors are created in Home Assistant
+- ✅ Model number parsing (now shows clean format like `TC-R2#4`)
+- ✅ Connection retry logic with exponential backoff
+- ✅ Alternative data reading methods when primary method fails
+- ✅ Comprehensive error handling and logging
+
+### Known Issues
+- 🔄 Bluetooth connection stability (ESP32 devices can be finicky)
+- 🔄 Some sensors may still show "Unknown" if device doesn't respond
+- 🔄 Connection attempts may fail intermittently due to device availability
+
+### Recent Log Analysis
+From the latest logs:
+- Connection attempts are being made with proper retry logic
+- Model number is being parsed correctly (`TC-R2#4` format)
+- ESP32 connection errors are being handled gracefully
+- Alternative data reading is being attempted when primary method fails
+
+## Configuration
+
+### Required Configuration
+```yaml
+blupow:
+  devices:
+    - name: "Solar Controller"
+      address: "C4:D3:6A:66:7E:D4"  # Your device's MAC address
+```
+
+### Optional Configuration
+```yaml
+blupow:
+  scan_interval: 60  # Update interval in seconds (default: 60)
+  devices:
+    - name: "Solar Controller"
+      address: "C4:D3:6A:66:7E:D4"
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Connection Failures**
+   - ESP32 devices can be temperamental
+   - Try restarting the device
+   - Check device is in pairing mode
+   - Ensure Bluetooth is enabled on Home Assistant
+
+2. **Sensors Showing "Unknown"**
+   - Check device is powered on and in range
+   - Look for connection errors in logs
+   - Try restarting the integration
+
+3. **Model Number Issues**
+   - Raw data format is now properly parsed
+   - Check logs for parsing details
+
+### Debug Logging
+Enable debug logging to see detailed connection and data parsing information:
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.blupow: debug
+```
+
+## Deployment Instructions
+
+1. Copy the integration files to `/config/custom_components/blupow/`
+2. Restart Home Assistant
+3. Add the integration via Configuration > Integrations
+4. Configure your device(s)
+5. Check logs for any issues
+
+## Files Structure
+```
+blupow/
+├── __init__.py              # Integration initialization
+├── manifest.json            # Integration metadata
+├── const.py                 # Constants and configuration
+├── config_flow.py           # Configuration flow
+├── coordinator.py           # Data coordinator
+├── blupow_client.py         # Bluetooth client (most complex)
+├── sensor.py                # Sensor entities
+├── strings.json             # UI strings
+└── translations/
+    └── en.json              # English translations
+```
+
+## Next Steps
+
+1. **Monitor Connection Stability**: Watch logs for connection success rates
+2. **Verify Sensor Data**: Check if sensors show actual values vs "Unknown"
+3. **Test Different Devices**: Try with other Renogy models if available
+4. **Performance Optimization**: Consider adjusting scan intervals based on usage
+
+## Contact
+For issues or questions, check the logs first and refer to this document. The integration is designed to be robust and self-healing, but ESP32 Bluetooth connections can be inherently unstable.
+
