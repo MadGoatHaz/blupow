@@ -3,7 +3,7 @@ import asyncio
 import logging
 from typing import Any
 
-from bleak.backends.client import BleakClient
+from bleak import BleakClient
 from bleak.exc import BleakError
 
 from homeassistant.components import bluetooth
