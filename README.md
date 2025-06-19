@@ -40,7 +40,7 @@ BluPow has evolved from a basic BLE client into a **sophisticated, environment-a
 If you find BluPow useful, please consider supporting its development. Your contributions help cover the costs of hardware and caffeinated beverages!
 
 - **[Sponsor on GitHub](https://github.com/sponsors/MadGoatHaz)**
-- **[Send a tip via PayPal](https://www.paypal.com/paypalme/ghazlett)**
+- **[Send a tip via PayPal](https://paypal.me/garretthazlett)**
 
 ### Universal Compatibility Matrix
 
