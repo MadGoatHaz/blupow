@@ -5,14 +5,9 @@ from typing import Any
 
 from bleak import BleakClient
 from bleak.exc import BleakError
-
-from homeassistant.components import bluetooth
-from homeassistant.core import HomeAssistant
 from bleak.backends.device import BLEDevice
 
-from homeassistant.components.bluetooth.const import BluetoothScanningMode
-from homeassistant.components.bluetooth.manager import async_get_scanner
-from homeassistant.helpers.service_info.bluetooth import BluetoothServiceInfoBleak
+from homeassistant.core import HomeAssistant
 
 from .const import (
     MODEL_NUMBER_CHAR_UUID,
@@ -40,11 +35,10 @@ class BluPowClient:
 
     async def get_data(self) -> dict[str, Any]:
         """Read device data."""
-        scanner = async_get_scanner(self._hass)
-        if (
-            client := scanner.async_get_bleak_client_for_device(self._device)
-        ) is not None:
-            try:
+        _LOGGER.debug("Connecting to %s", self._device.address)
+        try:
+            async with BleakClient(self._device) as client:
+                _LOGGER.debug("Connected to %s", self._device.address)
                 # First, get the model number
                 raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
                 model = raw_model.decode("utf-8").strip()
@@ -59,20 +53,16 @@ class BluPowClient:
                 parsed_data = self._parse_data(data)
 
                 return {"model_number": model, **parsed_data}
-            except BleakError as e:
-                _LOGGER.warning(
-                    "Bluetooth error communicating with %s: %s", self._device.address, e
-                )
-                raise
-            except Exception as e:
-                _LOGGER.error(
-                    "Unexpected error communicating with %s: %s", self._device.address, e
-                )
-                raise
-        else:
-            raise BleakError(
-                f"Device {self._device.address} not available for connection"
+        except BleakError as e:
+            _LOGGER.warning(
+                "Bluetooth error communicating with %s: %s", self._device.address, e
             )
+            raise
+        except Exception as e:
+            _LOGGER.error(
+                "Unexpected error communicating with %s: %s", self._device.address, e
+            )
+            raise
 
     async def _read_registers(
         self, client: BleakClient, start_register: int, count: int
