@@ -36,6 +36,10 @@ Custom Home Assistant integration for Renogy Bluetooth-enabled solar devices (Bl
    - **Root Cause**: Identified that `BleakConnectionError` was removed from the `bleak` library in a recent update used by Home Assistant.
    - **Solution**: Modified `blupow_client.py` to catch the more generic `BleakError` for connection-related issues, making the integration compatible with the new library version.
 
+7. **Coordinator Initialization `total_seconds` AttributeError** - FIXED (Latest)
+   - **Root Cause**: A previous refactoring hardcoded the coordinator's update interval as an integer (`30`) instead of the required `timedelta` object, causing an `AttributeError: 'int' object has no attribute 'total_seconds'` on startup.
+   - **Solution**: Re-implemented the configurable update interval. The `update_interval` is now correctly fetched from the config entry, passed to the coordinator, and instantiated as a `timedelta(seconds=update_interval)`. This required updates to `coordinator.py`, `__init__.py`, and `const.py`.
+
 ### 🔄 CURRENT ISSUES
 1. **Bluetooth Connection Issues** - ONGOING
    - Previous errors: "Timeout waiting for BluetoothDeviceConnectionResponse"
@@ -255,6 +259,6 @@ blupow/
 - Latest changes have resolved the `NoneType` and `ImportError` issues.
 
 ---
-**Last Updated**: 2025-01-20
-**Status**: Active Development - Power sensor suite implemented; major dependency issues (caching, `bleak` imports) resolved. Ready for deployment and testing.
+**Last Updated**: 2025-06-19
+**Status**: Active Development - `total_seconds` crash fixed. Ready for deployment and testing.
 
