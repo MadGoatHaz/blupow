@@ -1,18 +1,19 @@
 """
-BluPow BLE Client for Home Assistant Integration
+BluPow BLE Client for Home Assistant Integration - Renogy Protocol Implementation
 
-This client implements proactive environment detection and universal compatibility
-following the BluPow Project Ideology.
+Based on the proven cyrils/renogy-bt library: https://github.com/cyrils/renogy-bt
+This client implements the correct Renogy protocol for charge controller communication.
 """
 
 import asyncio
 import logging
 import platform
 import sys
+import struct
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
-from bleak import BleakClient, BleakScanner, BleakError
-from bleak.exc import BleakDeviceNotFoundError
+from bleak import BleakClient, BleakScanner
+from bleak.exc import BleakDeviceNotFoundError, BleakError
 from bleak.backends.device import BLEDevice
 
 from .const import (
@@ -95,8 +96,148 @@ class EnvironmentInfo:
                 f"Docker: {self.is_docker}, HassIO: {self.is_hassio}, "
                 f"BLE: {self.ble_backend}")
 
+class RenogyProtocol:
+    """Renogy Modbus protocol implementation based on cyrils/renogy-bt"""
+    
+    # Renogy BT-1/BT-2 module UUIDs (proven working from cyrils/renogy-bt)
+    WRITE_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb"
+    NOTIFY_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb" 
+    
+    # Alternative UUIDs for different firmware versions
+    ALT_WRITE_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
+    ALT_NOTIFY_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+    
+    # Renogy Modbus register addresses (from cyrils/renogy-bt)
+    DEVICE_INFO_START = 12  # 0x000C
+    DEVICE_INFO_LENGTH = 8
+    
+    BATTERY_INFO_START = 256  # 0x0100  
+    BATTERY_INFO_LENGTH = 34
+    
+    CHARGING_INFO_START = 263  # 0x0107
+    CHARGING_INFO_LENGTH = 11
+    
+    def __init__(self, device_id: int = 255):
+        """Initialize Renogy protocol with device ID (255 = broadcast)"""
+        self.device_id = device_id
+        self.response_data = bytearray()
+        
+    def create_read_request(self, register_addr: int, length: int) -> bytes:
+        """Create Modbus read request - based on cyrils/renogy-bt"""
+        # Modbus RTU format: [device_id][function][addr_hi][addr_lo][len_hi][len_lo][crc_lo][crc_hi]
+        request = bytearray([
+            self.device_id,  # Device address
+            0x03,  # Function code: Read Holding Registers
+            (register_addr >> 8) & 0xFF,  # Start address high byte
+            register_addr & 0xFF,         # Start address low byte  
+            (length >> 8) & 0xFF,         # Number of registers high byte
+            length & 0xFF                 # Number of registers low byte
+        ])
+        
+        # Calculate CRC16 for Modbus RTU
+        crc = self._calculate_crc16(request)
+        request.extend([(crc >> 8) & 0xFF, crc & 0xFF])
+        
+        return bytes(request)
+    
+    def _calculate_crc16(self, data: bytearray) -> int:
+        """Calculate CRC16 for Modbus RTU - from cyrils/renogy-bt"""
+        crc = 0xFFFF
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 0x0001:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc = crc >> 1
+        return crc
+    
+    def parse_device_info(self, data: bytes) -> Dict[str, Any]:
+        """Parse device information response - based on cyrils/renogy-bt"""
+        if len(data) < 21:  # Minimum response size
+            return {}
+            
+        try:
+            # Skip Modbus header (device_id, function, byte_count)
+            payload = data[3:]
+            
+            result = {}
+            
+            # Extract device information (16-bit big-endian values)
+            if len(payload) >= 16:
+                result['max_charging_current'] = struct.unpack('>H', payload[0:2])[0] / 100.0
+                result['max_discharging_current'] = struct.unpack('>H', payload[2:4])[0] / 100.0
+                result['product_type'] = struct.unpack('>H', payload[4:6])[0]
+                result['product_model'] = ''.join(chr(b) for b in payload[6:12] if b != 0)
+                result['software_version'] = struct.unpack('>H', payload[12:14])[0]
+                result['hardware_version'] = struct.unpack('>H', payload[14:16])[0]
+                
+            return result
+            
+        except Exception as e:
+            _LOGGER.debug(f"Error parsing device info: {e}")
+            return {}
+    
+    def parse_battery_info(self, data: bytes) -> Dict[str, Any]:
+        """Parse battery information response - based on cyrils/renogy-bt"""
+        if len(data) < 71:  # Minimum response size  
+            return {}
+            
+        try:
+            # Skip Modbus header
+            payload = data[3:]
+            
+            result = {}
+            
+            # Extract battery data (16-bit big-endian values)
+            if len(payload) >= 68:
+                result['battery_soc'] = struct.unpack('>H', payload[0:2])[0]
+                result['battery_voltage'] = struct.unpack('>H', payload[2:4])[0] / 100.0
+                result['battery_current'] = struct.unpack('>h', payload[4:6])[0] / 100.0  # signed
+                result['battery_temp'] = struct.unpack('>h', payload[6:8])[0] / 100.0    # signed
+                result['controller_temp'] = struct.unpack('>h', payload[8:10])[0] / 100.0
+                result['load_voltage'] = struct.unpack('>H', payload[10:12])[0] / 100.0
+                result['load_current'] = struct.unpack('>H', payload[12:14])[0] / 100.0
+                result['load_power'] = struct.unpack('>H', payload[14:16])[0]
+                
+                # Solar panel data
+                result['solar_voltage'] = struct.unpack('>H', payload[16:18])[0] / 100.0
+                result['solar_current'] = struct.unpack('>H', payload[18:20])[0] / 100.0
+                result['solar_power'] = struct.unpack('>H', payload[20:22])[0]
+                
+                # Daily statistics
+                result['daily_battery_voltage_min'] = struct.unpack('>H', payload[22:24])[0] / 100.0
+                result['daily_battery_voltage_max'] = struct.unpack('>H', payload[24:26])[0] / 100.0
+                result['daily_max_charging_current'] = struct.unpack('>H', payload[26:28])[0] / 100.0
+                result['daily_max_discharging_current'] = struct.unpack('>H', payload[28:30])[0] / 100.0
+                result['daily_max_charging_power'] = struct.unpack('>H', payload[30:32])[0]
+                result['daily_max_discharging_power'] = struct.unpack('>H', payload[32:34])[0]
+                result['daily_charging_amp_hours'] = struct.unpack('>H', payload[34:36])[0]
+                result['daily_discharging_amp_hours'] = struct.unpack('>H', payload[36:38])[0]
+                result['daily_power_generation'] = struct.unpack('>H', payload[38:40])[0]
+                result['daily_power_consumption'] = struct.unpack('>H', payload[40:42])[0]
+                
+                # Charging status
+                charging_state = struct.unpack('>H', payload[66:68])[0] 
+                charging_states = {
+                    0: 'deactivated',
+                    1: 'activated', 
+                    2: 'mppt',
+                    3: 'equalizing',
+                    4: 'boost',
+                    5: 'floating',
+                    6: 'current limiting'
+                }
+                result['charging_status'] = charging_states.get(charging_state, f'unknown_{charging_state}')
+                
+            return result
+            
+        except Exception as e:
+            _LOGGER.debug(f"Error parsing battery info: {e}")
+            return {}
+
 class BluPowClient:
-    """Enhanced BluPow BLE client with environment awareness"""
+    """Enhanced BluPow BLE client implementing Renogy protocol"""
     
     # Device-specific configuration
     DEVICE_CONFIGS = {
@@ -107,38 +248,24 @@ class BluPowClient:
             'timeout_base': 25,    # Longer timeout
             'characteristics_delay': 3,  # Extra delay after connection
         },
+        'RENOGY': {
+            'connection_delay': 5,  # Renogy BT modules need time
+            'retry_multiplier': 3,  
+            'max_retries': 5,      
+            'timeout_base': 20,    
+            'characteristics_delay': 2,
+        },
         'DEFAULT': {
-            'connection_delay': 3,  # Longer initial delay
-            'retry_multiplier': 3,  # Increased retry delay
-            'max_retries': 5,      # More retries
-            'timeout_base': 20,    # Longer timeout
+            'connection_delay': 3,  
+            'retry_multiplier': 3,  
+            'max_retries': 5,      
+            'timeout_base': 20,    
             'characteristics_delay': 1,
         }
     }
-    
-    # Multiple possible UUIDs for different firmware versions
-    CHARACTERISTIC_UUIDS = {
-        'rx': [
-            DEVICE_READ_CHAR,     # Tuner168 device read characteristic
-            RENOGY_RX_CHAR_UUID,  # Original BluPow RX
-            "6E400002-B5A3-F393-E0A9-E50E24DCCA9E",  # Nordic UART RX
-            "0000FFE1-0000-1000-8000-00805F9B34FB",  # Common ESP32 RX
-            "6E400003-B5A3-F393-E0A9-E50E24DCCA9E",  # Alternative RX
-        ],
-        'tx': [
-            DEVICE_WRITE_CHAR,    # Tuner168 device write characteristic
-            RENOGY_TX_CHAR_UUID,  # Original BluPow TX
-            "6E400003-B5A3-F393-E0A9-E50E24DCCA9E",  # Nordic UART TX
-            "0000FFE1-0000-1000-8000-00805F9B34FB",  # Common ESP32 TX
-            "6E400002-B5A3-F393-E0A9-E50E24DCCA9E",  # Alternative TX
-        ],
-        'notify': [
-            DEVICE_NOTIFY_CHAR,   # Tuner168 device notify characteristic
-        ]
-    }
 
     def __init__(self, device: BLEDevice):
-        """Initialize the BluPow client with environment detection."""
+        """Initialize the BluPow client with Renogy protocol support."""
         try:
             self._device = device
             self._notification_queue = asyncio.Queue()
@@ -152,6 +279,9 @@ class BluPowClient:
             self._discovered_characteristics = None
             self._connection_lock = asyncio.Lock()
             
+            # Initialize Renogy protocol
+            self.renogy_protocol = RenogyProtocol(device_id=255)  # Broadcast address
+            
             _LOGGER.info("BluPow client initialized for device: %s (%s) - Environment: %s", 
                         device.name or "Unknown", device.address, self.environment)
                         
@@ -162,7 +292,9 @@ class BluPowClient:
     def _detect_device_type(self, device_name: str = "") -> str:
         """Detect device type based on name or other characteristics"""
         device_name = device_name.lower()
-        if 'esp32' in device_name or 'esp' in device_name:
+        if 'bt-th' in device_name or 'renogy' in device_name or 'rover' in device_name:
+            return 'RENOGY'
+        elif 'esp32' in device_name or 'esp' in device_name:
             return 'ESP32'
         return 'DEFAULT'
 
@@ -201,7 +333,7 @@ class BluPowClient:
             return self._device.address
         except Exception as err:
             _LOGGER.error("Error getting device address: %s", err)
-            return "unknown"
+            return "Unknown Address"
 
     async def _get_services_compatible(self, client: BleakClient):
         """Get services using the most compatible method"""
@@ -223,19 +355,33 @@ class BluPowClient:
             return None
 
     async def _discover_characteristics(self, client: BleakClient) -> Dict[str, Any]:
-        """Discover device characteristics with fallback strategies"""
+        """Discover device characteristics with Renogy-specific UUIDs"""
         try:
             _LOGGER.debug(f"Discovering characteristics for device {self.address}")
             
             services = await self._get_services_compatible(client)
             if not services:
                 _LOGGER.debug("No services found")
-                return {'rx_chars': [], 'tx_chars': [], 'readable_chars': [], 'all_chars': []}
+                return {'write_char': None, 'notify_char': None, 'all_chars': []}
             
-            rx_chars = []
-            tx_chars = []
-            readable_chars = []
+            write_char = None
+            notify_char = None
             all_chars = []
+            
+            # Renogy-specific UUIDs (from cyrils/renogy-bt)
+            renogy_write_uuids = [
+                RenogyProtocol.WRITE_UUID,
+                RenogyProtocol.ALT_WRITE_UUID,
+                DEVICE_READ_WRITE_CHAR,  # tuner168 board UUID
+                "0000ffe1-0000-1000-8000-00805f9b34fb"  # Alternative
+            ]
+            
+            renogy_notify_uuids = [
+                RenogyProtocol.NOTIFY_UUID,
+                RenogyProtocol.ALT_NOTIFY_UUID,
+                DEVICE_NOTIFY_CHAR,  # tuner168 board UUID
+                "0000ffe1-0000-1000-8000-00805f9b34fb"  # Alternative
+            ]
             
             for service in services:
                 _LOGGER.debug(f"Found service: {service.uuid}")
@@ -249,34 +395,30 @@ class BluPowClient:
                     
                     _LOGGER.debug(f"Found characteristic: {char.uuid} (properties: {char.properties})")
                     
-                    # Check if it's a known RX characteristic
-                    if char.uuid.upper() in [uuid.upper() for uuid in self.CHARACTERISTIC_UUIDS['rx']]:
-                        rx_chars.append(char_info)
-                        _LOGGER.debug(f"Identified RX characteristic: {char.uuid}")
+                    # Check for Renogy write characteristics
+                    if char.uuid.lower() in [uuid.lower() for uuid in renogy_write_uuids]:
+                        if 'write' in char.properties or 'write-without-response' in char.properties:
+                            write_char = char_info
+                            _LOGGER.info(f"Found Renogy WRITE characteristic: {char.uuid}")
                     
-                    # Check if it's a known TX characteristic
-                    if char.uuid.upper() in [uuid.upper() for uuid in self.CHARACTERISTIC_UUIDS['tx']]:
-                        tx_chars.append(char_info)
-                        _LOGGER.debug(f"Identified TX characteristic: {char.uuid}")
-                    
-                    # Check if it's readable
-                    if 'read' in char.properties:
-                        readable_chars.append(char_info)
-                        _LOGGER.debug(f"Identified readable characteristic: {char.uuid}")
+                    # Check for Renogy notify characteristics  
+                    if char.uuid.lower() in [uuid.lower() for uuid in renogy_notify_uuids]:
+                        if 'notify' in char.properties or 'read' in char.properties:
+                            notify_char = char_info
+                            _LOGGER.info(f"Found Renogy NOTIFY characteristic: {char.uuid}")
             
             result = {
-                'rx_chars': rx_chars,
-                'tx_chars': tx_chars,
-                'readable_chars': readable_chars,
+                'write_char': write_char,
+                'notify_char': notify_char,
                 'all_chars': all_chars
             }
             
-            _LOGGER.debug(f"Characteristic discovery complete: {len(rx_chars)} RX, {len(tx_chars)} TX, {len(readable_chars)} readable")
+            _LOGGER.info(f"Renogy characteristic discovery complete: Write={'✓' if write_char else '✗'}, Notify={'✓' if notify_char else '✗'}")
             return result
             
         except Exception as e:
             _LOGGER.error(f"Error during characteristic discovery: {e}")
-            return {'rx_chars': [], 'tx_chars': [], 'readable_chars': [], 'all_chars': []}
+            return {'write_char': None, 'notify_char': None, 'all_chars': []}
 
     async def check_device_availability(self) -> bool:
         """Check if the device is available for connection with enhanced diagnostics."""
@@ -315,7 +457,7 @@ class BluPowClient:
             return True  # Allow main attempt to handle this with retries
 
     async def get_data(self) -> Dict[str, Any]:
-        """Read device data with comprehensive error handling and retry logic."""
+        """Read Renogy device data using proper Modbus protocol."""
         start_time = datetime.now()
         self._connection_attempts += 1
         
@@ -323,7 +465,7 @@ class BluPowClient:
         
         # Enhanced logging for first attempt
         if self._connection_attempts == 1:
-            _LOGGER.info("Starting BluPow connection to %s (%s) - Environment: %s", 
+            _LOGGER.info("Starting Renogy connection to %s (%s) - Environment: %s", 
                         self.name, self.address, self.environment)
             _LOGGER.info("Connection config: delays=%ds, retries=%d, timeout=%ds", 
                         config['connection_delay'], config['max_retries'], config['timeout_base'])
@@ -344,20 +486,20 @@ class BluPowClient:
                     await asyncio.sleep(delay)
                 
                 async with BleakClient(self._device, timeout=timeout) as client:
-                    _LOGGER.debug("Connected to device %s (timeout: %.1fs)", self.address, timeout)
+                    _LOGGER.debug("Connected to Renogy device %s (timeout: %.1fs)", self.address, timeout)
                     
                     # Wait for connection to stabilize
                     await asyncio.sleep(config['characteristics_delay'])
                     
-                    # Discover characteristics
-                    try:
-                        characteristics = await self._discover_characteristics(client)
-                    except Exception as e:
-                        _LOGGER.warning(f"Characteristic discovery failed: {e}")
-                        characteristics = {'rx_chars': [], 'tx_chars': [], 'readable_chars': [], 'all_chars': []}
+                    # Discover Renogy characteristics
+                    characteristics = await self._discover_characteristics(client)
                     
-                    # Try to read data using multiple strategies
-                    data = await self._read_data_with_fallbacks(client, characteristics)
+                    if not characteristics['write_char']:
+                        _LOGGER.warning("No Renogy WRITE characteristic found - device may not be compatible")
+                        continue
+                    
+                    # Try to read Renogy data using Modbus protocol
+                    data = await self._read_renogy_data(client, characteristics)
                     
                     if data:
                         # Add metadata
@@ -373,12 +515,12 @@ class BluPowClient:
                         self._last_successful_connection = start_time
                         self._last_error = None
                         
-                        _LOGGER.info("Successfully retrieved data from %s: %s", 
+                        _LOGGER.info("Successfully retrieved Renogy data from %s: %s", 
                                    self.address, list(data.keys()))
                         
                         return data
                     else:
-                        raise Exception("No data could be read from device")
+                        raise Exception("No Renogy data could be read from device")
                     
             except BleakDeviceNotFoundError as err:
                 error_msg = f"Device {self.address} not found"
@@ -454,358 +596,160 @@ class BluPowClient:
         # If we get here, all retries failed
         return self._get_error_data(f"All {config['max_retries']} connection attempts failed")
 
-    async def _read_data_with_fallbacks(self, client: BleakClient, characteristics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Try multiple strategies to read data from the device"""
+    async def _read_renogy_data(self, client: BleakClient, characteristics: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Read Renogy data using proper Modbus protocol - based on cyrils/renogy-bt"""
         
-        # Strategy 1: Try known RX characteristics
-        for char_info in characteristics['rx_chars']:
-            try:
-                _LOGGER.debug(f"Trying to read from RX characteristic: {char_info['uuid']}")
-                data = await client.read_gatt_char(char_info['uuid'])
-                if data:
-                    parsed = self._parse_power_data(data)
-                    if parsed:
-                        _LOGGER.debug("Successfully read data from RX characteristic")
-                        return parsed
-            except Exception as e:
-                _LOGGER.debug(f"Failed to read from {char_info['uuid']}: {e}")
-                continue
+        write_char = characteristics['write_char']
+        notify_char = characteristics['notify_char'] or write_char  # Some devices use same char for both
         
-        # Strategy 2: Try all readable characteristics
-        for char_info in characteristics['readable_chars']:
-            try:
-                _LOGGER.debug(f"Trying to read from readable characteristic: {char_info['uuid']}")
-                data = await client.read_gatt_char(char_info['uuid'])
-                if data and len(data) > 4:  # Reasonable data length
-                    parsed = self._parse_power_data(data)
-                    if parsed:  # Valid data
-                        _LOGGER.debug("Successfully read data from readable characteristic")
-                        return parsed
-            except Exception as e:
-                _LOGGER.debug(f"Failed to read from {char_info['uuid']}: {e}")
-                continue
+        if not write_char:
+            _LOGGER.error("No write characteristic available for Renogy communication")
+            return None
         
-        # Strategy 3: Send command and read response (if we have TX characteristics)
-        if characteristics['tx_chars']:
+        try:
+            _LOGGER.info("Reading Renogy data using Modbus protocol")
+            
+            # Set up notification handler if available
+            response_data = bytearray()
+            response_event = asyncio.Event()
+            
+            def notification_handler(sender, data):
+                _LOGGER.debug(f"Received notification: {data.hex()}")
+                response_data.extend(data)
+                response_event.set()
+            
+            # Subscribe to notifications if supported
+            if notify_char and 'notify' in notify_char['properties']:
+                await client.start_notify(notify_char['uuid'], notification_handler)
+                _LOGGER.debug("Subscribed to notifications")
+            
+            # Strategy 1: Read device information
+            device_info = {}
             try:
-                tx_char = characteristics['tx_chars'][0]
-                _LOGGER.debug(f"Sending read command to TX characteristic: {tx_char['uuid']}")
+                _LOGGER.debug("Requesting device information")
+                device_cmd = self.renogy_protocol.create_read_request(
+                    self.renogy_protocol.DEVICE_INFO_START,
+                    self.renogy_protocol.DEVICE_INFO_LENGTH
+                )
+                _LOGGER.debug(f"Sending device info command: {device_cmd.hex()}")
                 
-                # Send a common read command
-                read_command = b'\x01\x03\x00\x00\x00\x01\x84\x0A'  # Common Modbus-like read command
-                await client.write_gatt_char(tx_char['uuid'], read_command)
+                await client.write_gatt_char(write_char['uuid'], device_cmd, response=False)
                 
                 # Wait for response
-                await asyncio.sleep(0.5)
-                
-                # Try to read response from RX characteristics
-                for char_info in characteristics['rx_chars'] or characteristics['readable_chars']:
-                    try:
-                        data = await client.read_gatt_char(char_info['uuid'])
-                        if data:
-                            parsed = self._parse_power_data(data)
-                            if parsed:
-                                _LOGGER.debug("Successfully read data via command/response")
-                                return parsed
-                    except Exception as e:
-                        _LOGGER.debug(f"Failed to read response from {char_info['uuid']}: {e}")
-                        continue
-                        
+                try:
+                    await asyncio.wait_for(response_event.wait(), timeout=3.0)
+                    if response_data:
+                        device_info = self.renogy_protocol.parse_device_info(bytes(response_data))
+                        _LOGGER.info(f"Device info: {device_info}")
+                    response_data.clear()
+                    response_event.clear()
+                except asyncio.TimeoutError:
+                    _LOGGER.debug("Device info request timed out")
+                    
             except Exception as e:
-                _LOGGER.debug(f"Command/response strategy failed: {e}")
-        
-        # Strategy 4: Try to get model number if available
-        try:
-            model_data = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
-            model = model_data.decode('utf-8', errors='ignore').strip()
-            _LOGGER.debug("Got model number: %s", model)
-            return {
-                "model_number": model,
-                "voltage": 0.0,
-                "current": 0.0,
-                "power": 0.0,
-                "energy": 0.0
-            }
-        except Exception as e:
-            _LOGGER.debug(f"Could not read model number: {e}")
-        
-        _LOGGER.warning("All data reading strategies failed")
-        return None
-
-    def _parse_power_data(self, data: bytes) -> Optional[Dict[str, Any]]:
-        """Parse sensor data from raw bytes with multiple format support"""
-        
-        # First, try to get device information from characteristics
-        device_info = self._get_device_info_from_device()
-        
-        # Generate sensor data based on device type
-        if device_info and 'tuner168' in device_info.get('manufacturer', '').lower():
-            # This is a temperature/humidity sensor, generate appropriate data
-            return self._generate_sensor_data_for_temp_humidity_device(device_info)
-        
-        if not data or len(data) < 4:
-            # No data but still provide demo values for energy dashboard
-            return self._generate_demo_energy_data()
-        
-        try:
-            _LOGGER.debug(f"Parsing data: {data.hex()}")
+                _LOGGER.debug(f"Device info request failed: {e}")
             
-            # Strategy 1: Try temperature/humidity parsing first
-            temp_hum_data = self._parse_temperature_humidity_data(data)
-            if temp_hum_data:
-                return self._generate_sensor_data_with_temp_humidity(temp_hum_data)
-            
-            # Strategy 2: Try common BluPow format (little-endian)
-            if len(data) >= 8:
-                try:
-                    voltage = int.from_bytes(data[0:2], byteorder='little') / 100.0
-                    current = int.from_bytes(data[2:4], byteorder='little') / 1000.0
-                    power = int.from_bytes(data[4:6], byteorder='little') / 100.0
-                    energy = int.from_bytes(data[6:8], byteorder='little') / 1000.0
-                    
-                    # Sanity check for power data
-                    if 0 < voltage < 500 and 0 <= current < 100 and 0 <= power < 10000:
-                        return {
-                            'model_number': device_info.get('model', 'BluPow Device'),
-                            'temperature': None,
-                            'humidity': None,
-                            'solar_power': power,
-                            'battery_voltage': voltage,
-                            'battery_current': current,
-                            'energy_consumption': energy,
-                        }
-                except Exception as e:
-                    _LOGGER.debug(f"Little-endian power parsing failed: {e}")
-            
-            # Strategy 3: Try big-endian format
-            if len(data) >= 8:
-                try:
-                    voltage = int.from_bytes(data[0:2], byteorder='big') / 100.0
-                    current = int.from_bytes(data[2:4], byteorder='big') / 1000.0
-                    power = int.from_bytes(data[4:6], byteorder='big') / 100.0
-                    energy = int.from_bytes(data[6:8], byteorder='big') / 1000.0
-                    
-                    # Sanity check for power data
-                    if 0 < voltage < 500 and 0 <= current < 100 and 0 <= power < 10000:
-                        return {
-                            'model_number': device_info.get('model', 'BluPow Device'),
-                            'temperature': None,
-                            'humidity': None,
-                            'solar_power': power,
-                            'battery_voltage': voltage,
-                            'battery_current': current,
-                            'energy_consumption': energy,
-                        }
-                except Exception as e:
-                    _LOGGER.debug(f"Big-endian power parsing failed: {e}")
-            
-            # Strategy 4: Try to parse as ASCII/text
+            # Strategy 2: Read battery/charging information
+            battery_info = {}
             try:
-                text_data = data.decode('utf-8').strip()
-                if ',' in text_data or ';' in text_data:
-                    # CSV-like format
-                    values = text_data.replace(';', ',').split(',')
-                    if len(values) >= 4:
-                        return {
-                            'model_number': device_info.get('model', 'BluPow Device'),
-                            'temperature': None,
-                            'humidity': None,
-                            'solar_power': float(values[2]),
-                            'battery_voltage': float(values[0]),
-                            'battery_current': float(values[1]),
-                            'energy_consumption': float(values[3]),
-                        }
+                _LOGGER.debug("Requesting battery information")
+                battery_cmd = self.renogy_protocol.create_read_request(
+                    self.renogy_protocol.BATTERY_INFO_START,
+                    self.renogy_protocol.BATTERY_INFO_LENGTH
+                )
+                _LOGGER.debug(f"Sending battery info command: {battery_cmd.hex()}")
+                
+                await client.write_gatt_char(write_char['uuid'], battery_cmd, response=False)
+                
+                # Wait for response
+                try:
+                    await asyncio.wait_for(response_event.wait(), timeout=5.0)
+                    if response_data:
+                        battery_info = self.renogy_protocol.parse_battery_info(bytes(response_data))
+                        _LOGGER.info(f"Battery info: {battery_info}")
+                    response_data.clear()
+                    response_event.clear()
+                except asyncio.TimeoutError:
+                    _LOGGER.debug("Battery info request timed out")
+                    
             except Exception as e:
-                _LOGGER.debug(f"ASCII parsing failed: {e}")
+                _LOGGER.debug(f"Battery info request failed: {e}")
             
-            _LOGGER.debug(f"Could not parse data format: {data.hex()}, generating demo data")
-            return self._generate_demo_energy_data()
+            # Stop notifications
+            if notify_char and 'notify' in notify_char['properties']:
+                try:
+                    await client.stop_notify(notify_char['uuid'])
+                except:
+                    pass
             
-        except Exception as e:
-            _LOGGER.error(f"Data parsing error: {e}")
-            return self._generate_demo_energy_data()
-
-    def _get_device_info_from_device(self) -> Dict[str, Any]:
-        """Get device information from the BLE device"""
-        try:
-            return {
-                'model': getattr(self._device, 'name', 'Unknown'),
-                'manufacturer': 'Unknown',
-                'address': getattr(self._device, 'address', 'Unknown')
+            # Combine the results
+            combined_data = {}
+            combined_data.update(device_info)
+            combined_data.update(battery_info)
+            
+            # Convert to expected format for Home Assistant
+            result = {
+                'model_number': combined_data.get('product_model', 'RNG-CTRL-RVR40'),
+                'battery_voltage': combined_data.get('battery_voltage'),
+                'solar_voltage': combined_data.get('solar_voltage'),
+                'battery_current': combined_data.get('battery_current'),
+                'solar_current': combined_data.get('solar_current'),
+                'battery_soc': combined_data.get('battery_soc'),
+                'battery_temp': combined_data.get('battery_temp'),
+                'solar_power': combined_data.get('solar_power'),
+                # Additional energy monitoring data
+                'load_power': combined_data.get('load_power'),
+                'load_current': combined_data.get('load_current'),
+                'load_voltage': combined_data.get('load_voltage'),
+                'daily_power_generation': combined_data.get('daily_power_generation'),
+                'daily_power_consumption': combined_data.get('daily_power_consumption'),
+                'charging_status': combined_data.get('charging_status'),
+                'controller_temp': combined_data.get('controller_temp'),
             }
-        except Exception:
-            return {}
-
-    def _parse_temperature_humidity_data(self, data: bytes) -> Optional[Dict[str, float]]:
-        """Try to parse temperature and humidity from sensor data"""
-        if not data or len(data) < 4:
+            
+            # Filter out None values and log what we got
+            valid_data = {k: v for k, v in result.items() if v is not None}
+            
+            if valid_data:
+                _LOGGER.info(f"Successfully parsed Renogy data: {valid_data}")
+                return result
+            else:
+                _LOGGER.warning("No valid Renogy data received")
+                return None
+                
+        except Exception as e:
+            _LOGGER.error(f"Renogy data reading failed: {e}")
             return None
-            
-        try:
-            # Common formats for temp/humidity sensors
-            if len(data) >= 4:
-                # Format 1: 16-bit temp, 16-bit humidity (little endian)
-                temp_raw = int.from_bytes(data[0:2], byteorder='little')
-                hum_raw = int.from_bytes(data[2:4], byteorder='little')
-                
-                # Try different scaling factors 
-                temp1 = temp_raw / 100.0  # 0.01°C resolution
-                hum1 = hum_raw / 100.0    # 0.01% resolution
-                
-                if -50 <= temp1 <= 100 and 0 <= hum1 <= 100:
-                    return {'temperature': temp1, 'humidity': hum1}
-                
-                # Format 2: 16-bit temp, 16-bit humidity (big endian)
-                temp_raw = int.from_bytes(data[0:2], byteorder='big')
-                hum_raw = int.from_bytes(data[2:4], byteorder='big')
-                
-                temp2 = temp_raw / 100.0
-                hum2 = hum_raw / 100.0
-                
-                if -50 <= temp2 <= 100 and 0 <= hum2 <= 100:
-                    return {'temperature': temp2, 'humidity': hum2}
-                
-                # Format 3: Different scaling
-                temp3 = temp_raw / 10.0
-                hum3 = hum_raw / 10.0
-                
-                if -50 <= temp3 <= 100 and 0 <= hum3 <= 100:
-                    return {'temperature': temp3, 'humidity': hum3}
-            
-            # Try as text data
-            try:
-                text = data.decode('utf-8', errors='ignore')
-                if 'T:' in text and 'H:' in text:
-                    # Format: "T:25.6 H:45.2"
-                    parts = text.split()
-                    temp = float(parts[0].replace('T:', ''))
-                    hum = float(parts[1].replace('H:', ''))
-                    return {'temperature': temp, 'humidity': hum}
-            except:
-                pass
-                
-        except Exception as e:
-            _LOGGER.debug(f"Temperature/humidity parse error: {e}")
-        
-        return None
-
-    def _generate_sensor_data_for_temp_humidity_device(self, device_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate sensor data for temperature/humidity device with mock energy data"""
-        import random
-        import time
-        
-        # Simulate temperature and humidity (since we can't read them directly)
-        base_temp = 22.0 + random.uniform(-8, 12)  # Reasonable indoor temp range
-        base_humidity = 45.0 + random.uniform(-20, 30)  # Reasonable humidity range
-        
-        # Generate mock energy data based on temperature
-        energy_data = self._generate_mock_energy_data(base_temp, base_humidity)
-        
-        return {
-            'model_number': device_info.get('model', 'Temperature/Humidity Sensor'),
-            'temperature': round(base_temp, 1),
-            'humidity': round(max(0, min(100, base_humidity)), 1),
-            'solar_power': energy_data['solar_power'],
-            'battery_voltage': energy_data['battery_voltage'],
-            'battery_current': energy_data['battery_current'],
-            'energy_consumption': energy_data['energy_consumption'],
-        }
-
-    def _generate_sensor_data_with_temp_humidity(self, temp_hum_data: Dict[str, float]) -> Dict[str, Any]:
-        """Generate full sensor data with real temperature/humidity and mock energy data"""
-        energy_data = self._generate_mock_energy_data(
-            temp_hum_data['temperature'], 
-            temp_hum_data['humidity']
-        )
-        
-        return {
-            'model_number': 'Temperature/Humidity Sensor',
-            'temperature': temp_hum_data['temperature'],
-            'humidity': temp_hum_data['humidity'],
-            'solar_power': energy_data['solar_power'],
-            'battery_voltage': energy_data['battery_voltage'],
-            'battery_current': energy_data['battery_current'],
-            'energy_consumption': energy_data['energy_consumption'],
-        }
-
-    def _generate_demo_energy_data(self) -> Dict[str, Any]:
-        """Generate demo sensor data when no real data is available"""
-        import random
-        temp = 23.0 + random.uniform(-5, 8)
-        humidity = 50.0 + random.uniform(-15, 20)
-        energy_data = self._generate_mock_energy_data(temp, humidity)
-        
-        return {
-            'model_number': 'Demo Sensor',
-            'temperature': round(temp, 1),
-            'humidity': round(max(0, min(100, humidity)), 1),
-            'solar_power': energy_data['solar_power'],
-            'battery_voltage': energy_data['battery_voltage'],
-            'battery_current': energy_data['battery_current'],
-            'energy_consumption': energy_data['energy_consumption'],
-        }
-
-    def _generate_mock_energy_data(self, temperature: float, humidity: float) -> Dict[str, float]:
-        """Generate realistic mock energy data based on temperature/humidity for energy dashboard"""
-        import random
-        import time
-        
-        # Simulate solar power based on temperature (higher temp = more sun = more power)
-        if temperature > 25:
-            base_solar_power = 150 + (temperature - 25) * 10  # More power when hot
-        elif temperature > 15:
-            base_solar_power = 50 + (temperature - 15) * 10   # Moderate power
-        else:
-            base_solar_power = max(0, 20 + temperature * 2)   # Low power when cold
-        
-        # Add some randomness and time-based variation to simulate day/night cycle
-        time_factor = abs(time.time() % 86400 - 43200) / 43200  # Noon = 1, midnight = 0
-        solar_power = max(0, base_solar_power * time_factor + random.uniform(-20, 20))
-        
-        # Battery voltage (simulate based on solar charging)
-        if solar_power > 100:
-            battery_voltage = 12.6 + random.uniform(-0.2, 0.4)  # Charging
-        elif solar_power > 50:
-            battery_voltage = 12.3 + random.uniform(-0.3, 0.3)  # Maintaining
-        else:
-            battery_voltage = 12.0 + random.uniform(-0.5, 0.2)  # Discharging
-        
-        # Battery current (positive = charging, negative = discharging)
-        if solar_power > 80:
-            battery_current = solar_power / battery_voltage / 10  # Charging
-        else:
-            battery_current = -random.uniform(0.5, 2.0)  # Discharging load
-        
-        # Energy consumption (kWh) - cumulative over time
-        energy_consumption = (abs(battery_current) * battery_voltage / 1000) * (1/60)  # Approximate kWh for 1 minute
-        
-        return {
-            'solar_power': round(solar_power, 1),
-            'battery_voltage': round(battery_voltage, 2),
-            'battery_current': round(battery_current, 2),
-            'energy_consumption': round(energy_consumption, 4),
-        }
 
     def _get_error_data(self, error_message: str) -> Dict[str, Any]:
-        """Return error data structure."""
+        """Return error data structure"""
         return {
-            "error_message": error_message,
-            "model_number": "Unknown",
-            "voltage": None,
-            "current": None,
-            "power": None,
-            "energy": None,
-            "connection_attempts": self._connection_attempts,
-            "last_error": error_message,
-            "device_type": self.device_type,
-            "environment": str(self.environment),
+            'model_number': 'RNG-CTRL-RVR40',  # Known model from user confirmation
+            'battery_voltage': None,
+            'solar_voltage': None,
+            'battery_current': None,
+            'solar_current': None,
+            'battery_soc': None,
+            'battery_temp': None,
+            'solar_power': None,
+            'load_power': None,
+            'load_current': None,
+            'load_voltage': None,
+            'daily_power_generation': None,
+            'daily_power_consumption': None,
+            'charging_status': None,
+            'controller_temp': None,
+            'connection_status': 'error',
+            'last_update': 'error',
+            'error_count': self._connection_attempts,
+            'last_error': error_message
         }
 
     @staticmethod
     async def scan_devices(timeout: float = 10.0) -> List[Tuple[str, str]]:
-        """Scan for BluPow devices with enhanced diagnostics."""
+        """Scan for Renogy devices with enhanced diagnostics."""
         try:
-            _LOGGER.info("Scanning for BluPow devices (timeout: %.1fs)...", timeout)
+            _LOGGER.info("Scanning for Renogy devices (timeout: %.1fs)...", timeout)
             
             # Enhanced scanning with diagnostics
             devices = await BleakScanner.discover(timeout=timeout)
@@ -829,105 +773,51 @@ class BluPowClient:
                 
                 _LOGGER.debug("Discovered device: %s (%s) RSSI: %s", name, address, rssi)
                 
-                # Look for potential BluPow devices
-                if any(keyword in name.lower() for keyword in ['bt-th', 'blupow', 'renogy', 'solar', 'esp32']):
-                    _LOGGER.info("Potential BluPow device found: %s (%s) RSSI: %s", name, address, rssi)
+                # Look for potential Renogy devices
+                if any(keyword in name.lower() for keyword in ['bt-th', 'renogy', 'solar', 'rover', 'wanderer']):
+                    _LOGGER.info("Potential Renogy device found: %s (%s) RSSI: %s", name, address, rssi)
                     found_devices.append((address, name))
-                
-            if not found_devices:
-                _LOGGER.warning("No potential BluPow devices found in scan")
-                _LOGGER.info("If your device should be detected:")
-                _LOGGER.info("  1. Make sure the device is powered on and advertising")
-                _LOGGER.info("  2. Check if the device is in pairing/discoverable mode")
-                _LOGGER.info("  3. Ensure the device is within Bluetooth range (< 10m)")
-                _LOGGER.info("  4. Try power cycling the device")
+            
+            if found_devices:
+                _LOGGER.info("Found %d potential Renogy devices", len(found_devices))
+            else:
+                _LOGGER.warning("No Renogy devices found. Look for devices with names containing:")
+                _LOGGER.warning("  BT-TH-xxx, Renogy, Solar, Rover, Wanderer")
             
             return found_devices
             
         except Exception as err:
             _LOGGER.error("Device scanning failed: %s", err)
-            _LOGGER.info("Bluetooth scanning error troubleshooting:")
-            _LOGGER.info("  1. Check if Home Assistant has proper Bluetooth permissions")
-            _LOGGER.info("  2. Verify Bluetooth adapter is working: 'hciconfig' or 'bluetoothctl'")
-            _LOGGER.info("  3. Try restarting Home Assistant or the host system")
-            _LOGGER.info("  4. Check for conflicting Bluetooth applications")
             return []
 
     @staticmethod 
     async def diagnose_bluetooth() -> Dict[str, Any]:
-        """Comprehensive Bluetooth diagnostics for troubleshooting."""
-        diagnostics = {
-            "timestamp": datetime.now().isoformat(),
-            "environment": str(EnvironmentInfo()),
-            "scan_results": {},
-            "platform_info": {},
-            "recommendations": []
-        }
-        
+        """Diagnose Bluetooth setup and compatibility"""
         try:
-            _LOGGER.info("Running BluPow Bluetooth diagnostics...")
-            
-            # Platform detection
-            env = EnvironmentInfo()
-            diagnostics["platform_info"] = {
-                "platform": env.platform,
-                "python_version": str(env.python_version),
-                "is_docker": env.is_docker,
-                "is_hassio": env.is_hassio,
-                "ble_backend": env.ble_backend
+            diagnosis = {
+                'platform': platform.system(),
+                'python_version': sys.version,
+                'bleak_available': True,
             }
             
             # Test basic scanning
             try:
-                _LOGGER.info("Testing Bluetooth device discovery...")
-                scan_start = datetime.now()
                 devices = await BleakScanner.discover(timeout=5.0)
-                scan_duration = (datetime.now() - scan_start).total_seconds()
-                
-                diagnostics["scan_results"] = {
-                    "success": True,
-                    "device_count": len(devices),
-                    "scan_duration_seconds": scan_duration,
-                    "devices": []
-                }
-                
-                for device in devices:
-                    device_info = {
-                        "name": device.name or "Unknown",
-                        "address": device.address,
-                        "rssi": getattr(device, 'rssi', None)
-                    }
-                    diagnostics["scan_results"]["devices"].append(device_info)
-                    
-                _LOGGER.info("Bluetooth scan successful: %d devices found in %.1fs", len(devices), scan_duration)
-                
-            except Exception as scan_err:
-                _LOGGER.error("Bluetooth scan failed: %s", scan_err)
-                diagnostics["scan_results"] = {
-                    "success": False,
-                    "error": str(scan_err),
-                    "device_count": 0
-                }
-                diagnostics["recommendations"].append("Bluetooth scanning failed - check adapter and permissions")
+                diagnosis['scan_successful'] = True
+                diagnosis['devices_found'] = len(devices)
+                diagnosis['sample_devices'] = [(d.name or "Unknown", d.address) for d in devices[:5]]
+            except Exception as e:
+                diagnosis['scan_successful'] = False
+                diagnosis['scan_error'] = str(e)
             
-            # Generate recommendations based on findings
-            if diagnostics["scan_results"].get("device_count", 0) == 0:
-                diagnostics["recommendations"].extend([
-                    "No Bluetooth devices detected - check if Bluetooth is enabled",
-                    "Verify Home Assistant has Bluetooth permissions",
-                    "Try restarting the Bluetooth service"
-                ])
+            return diagnosis
             
-            if env.is_docker:
-                diagnostics["recommendations"].append("Docker environment detected - ensure container has Bluetooth access")
-                
-            if env.is_hassio:
-                diagnostics["recommendations"].append("Home Assistant OS detected - Bluetooth should work automatically")
-                
-            return diagnostics
-            
+        except ImportError:
+            return {
+                'bleak_available': False,
+                'error': 'Bleak library not available'
+            }
         except Exception as err:
-            _LOGGER.error("Bluetooth diagnostics failed: %s", err)
-            diagnostics["error"] = str(err)
-            diagnostics["recommendations"].append("Diagnostics failed - serious Bluetooth system issue")
-            return diagnostics 
+            return {
+                'diagnosis_error': str(err)
+            } 

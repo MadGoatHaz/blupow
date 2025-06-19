@@ -217,17 +217,17 @@ async def test_device_connection(address: str) -> bool:
             async with BleakClient(target_device, timeout=10.0) as client:
                 print(f"✓ Successfully connected to {address}")
                 
-                                                  # Get services
-                 try:
-                     services = client.services
-                     service_list = list(services) if services else []
-                     print(f"Found {len(service_list)} services")
-                     for service in service_list:
-                         print(f"  Service: {service.uuid}")
-                         for char in service.characteristics:
-                             print(f"    Characteristic: {char.uuid} (properties: {char.properties})")
-                 except Exception as e:
-                     print(f"Could not read services: {e}")
+                # Get services
+                try:
+                    services = client.services
+                    service_list = list(services) if services else []
+                    print(f"Found {len(service_list)} services")
+                    for service in service_list:
+                        print(f"  Service: {service.uuid}")
+                        for char in service.characteristics:
+                            print(f"    Characteristic: {char.uuid} (properties: {char.properties})")
+                except Exception as e:
+                    print(f"Could not read services: {e}")
                 
                 return True
         except Exception as e:

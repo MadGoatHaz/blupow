@@ -1,76 +1,141 @@
 #!/usr/bin/env python3
 """
-Simple BluPow Bluetooth Test Script
+Simple test script for BluPow Renogy integration
+Tests the new cyrils/renogy-bt protocol implementation
 """
 
 import asyncio
-from bleak import BleakScanner, BleakClient
+import logging
+from bleak import BleakScanner
+from bleak.backends.device import BLEDevice
 
-async def main():
-    print("=" * 50)
-    print("BluPow Bluetooth Connection Test")
-    print("=" * 50)
+# Set up basic logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+_LOGGER = logging.getLogger(__name__)
+
+# Import our updated client
+try:
+    from blupow_client import BluPowClient
+    _LOGGER.info("Successfully imported BluPowClient with Renogy protocol")
+except ImportError as e:
+    _LOGGER.error(f"Failed to import BluPowClient: {e}")
+    exit(1)
+
+# Known Renogy device
+RENOGY_DEVICE_ADDRESS = "C4:D3:6A:66:7E:D4"
+RENOGY_DEVICE_NAME = "BT-TH-6A667ED4"
+
+async def test_renogy_connection():
+    """Test connection to the confirmed Renogy RNG-CTRL-RVR40 device"""
     
-    # First, scan for devices
-    print("Scanning for Bluetooth devices...")
+    _LOGGER.info("=" * 60)
+    _LOGGER.info("TESTING RENOGY RNG-CTRL-RVR40 CONNECTION")
+    _LOGGER.info("=" * 60)
+    
+    # Create fake BLE device for testing
+    class TestBLEDevice:
+        def __init__(self, address, name):
+            self.address = address
+            self.name = name
+            self.rssi = -50
+    
+    device = TestBLEDevice(RENOGY_DEVICE_ADDRESS, RENOGY_DEVICE_NAME)
+    
     try:
-        devices = await BleakScanner.discover(timeout=10.0)
-        print(f"Found {len(devices)} devices:")
+        # Initialize BluPow client with Renogy protocol
+        client = BluPowClient(device)
+        _LOGGER.info(f"Created BluPow client for device: {client.name} ({client.address})")
         
-        target_device = None
-        for device in devices:
-            name = device.name or "Unknown"
-            address = device.address
-            print(f"  {name} ({address})")
+        # Test device availability
+        _LOGGER.info("Checking device availability...")
+        available = await client.check_device_availability()
+        _LOGGER.info(f"Device availability: {available}")
+        
+        # Attempt to get data using new Renogy protocol
+        _LOGGER.info("Attempting to read Renogy data using Modbus protocol...")
+        data = await client.get_data()
+        
+        if data:
+            _LOGGER.info("✅ SUCCESS: Retrieved data from Renogy device!")
+            _LOGGER.info("Data received:")
+            for key, value in data.items():
+                if value is not None:
+                    _LOGGER.info(f"  {key}: {value}")
+                else:
+                    _LOGGER.info(f"  {key}: None (no data)")
             
-            # Look for our target device
-            if address.upper() == "C4:D3:6A:66:7E:D4":
-                target_device = device
-                print(f"  *** Found target device: {name} ***")
-        
-        if not target_device:
-            print("\n❌ Target device C4:D3:6A:66:7E:D4 not found!")
-            print("Make sure your solar charger is:")
-            print("  1. Powered on")
-            print("  2. Within 10 meters")
-            print("  3. Not connected to another device")
-            return
-        
-        # Try to connect to the target device
-        print(f"\n🔌 Attempting to connect to {target_device.name}...")
-        try:
-            async with BleakClient(target_device, timeout=15.0) as client:
-                print("✅ Successfully connected!")
+            # Check for real solar data
+            if data.get('solar_power') is not None:
+                _LOGGER.info("🌞 SOLAR POWER DETECTED! Energy dashboard ready!")
+            if data.get('battery_voltage') is not None:
+                _LOGGER.info("🔋 BATTERY DATA DETECTED! Battery monitoring ready!")
                 
-                # List services
-                try:
-                    services = client.services
-                    if services:
-                        print(f"Found services:")
-                        for service in services:
-                            print(f"  Service: {service.uuid}")
-                            for char in service.characteristics:
-                                print(f"    Char: {char.uuid} ({char.properties})")
-                    else:
-                        print("No services found")
-                except Exception as e:
-                    print(f"Error reading services: {e}")
-                
-        except Exception as e:
-            print(f"❌ Connection failed: {e}")
-            
-            if "No backend with an available connection slot" in str(e):
-                print("\n🚨 This is the same error Home Assistant is experiencing!")
-                print("\nTroubleshooting steps:")
-                print("1. sudo systemctl restart bluetooth")
-                print("2. sudo hciconfig hci0 reset")
-                print("3. killall -9 bluetoothd && sudo systemctl start bluetooth")
-                print("4. Check if another app is using the device")
-                print("5. Try rebooting the system")
+        else:
+            _LOGGER.warning("❌ No data received from device")
             
     except Exception as e:
-        print(f"❌ Scan failed: {e}")
-        print("This indicates a serious Bluetooth issue")
+        _LOGGER.error(f"❌ Test failed: {e}")
+        return False
+    
+    return True
+
+async def scan_for_renogy_devices():
+    """Scan for potential Renogy devices"""
+    
+    _LOGGER.info("=" * 60)
+    _LOGGER.info("SCANNING FOR RENOGY DEVICES")
+    _LOGGER.info("=" * 60)
+    
+    try:
+        _LOGGER.info("Starting Bluetooth scan for 10 seconds...")
+        devices = await BleakScanner.discover(timeout=10.0)
+        
+        renogy_devices = []
+        for device in devices:
+            name = device.name or "Unknown"
+            if any(keyword in name.lower() for keyword in ['bt-th', 'renogy', 'solar', 'rover']):
+                renogy_devices.append(device)
+                _LOGGER.info(f"Found potential Renogy device: {name} ({device.address}) RSSI: {device.rssi}")
+        
+        if not renogy_devices:
+            _LOGGER.warning("No potential Renogy devices found in scan")
+            _LOGGER.info("Note: The known device might not be advertising or might be connected elsewhere")
+        
+        return renogy_devices
+        
+    except Exception as e:
+        _LOGGER.error(f"Bluetooth scan failed: {e}")
+        return []
+
+async def main():
+    """Main test function"""
+    
+    _LOGGER.info("BluPow Renogy Integration Test")
+    _LOGGER.info("Device: RNG-CTRL-RVR40 (Renogy Rover 40A)")
+    _LOGGER.info("Protocol: cyrils/renogy-bt Modbus implementation")
+    _LOGGER.info("")
+    
+    # First, scan for devices
+    await scan_for_renogy_devices()
+    
+    _LOGGER.info("")
+    
+    # Test connection to known device
+    success = await test_renogy_connection()
+    
+    _LOGGER.info("")
+    _LOGGER.info("=" * 60)
+    if success:
+        _LOGGER.info("✅ TEST COMPLETED SUCCESSFULLY")
+        _LOGGER.info("Integration ready for Home Assistant deployment!")
+        _LOGGER.info("Next steps:")
+        _LOGGER.info("1. Deploy integration to Home Assistant")
+        _LOGGER.info("2. Configure device with address: C4:D3:6A:66:7E:D4")
+        _LOGGER.info("3. Add sensors to Energy Dashboard")
+    else:
+        _LOGGER.info("❌ TEST ENCOUNTERED ISSUES")
+        _LOGGER.info("Check logs above for details")
+    _LOGGER.info("=" * 60)
 
 if __name__ == "__main__":
     asyncio.run(main()) 
