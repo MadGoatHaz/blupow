@@ -1,5 +1,7 @@
 # BluPow: Renogy Bluetooth Integration for Home Assistant
 
+![BluPow Project Logo](brand/blupow/logo.png)
+
 Connect your Renogy Bluetooth-enabled devices to Home Assistant. This integration allows you to monitor your solar charge controller, inverter, or smart battery directly from your Home Assistant dashboard.
 
 ## Features
