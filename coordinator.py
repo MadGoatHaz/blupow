@@ -2,6 +2,7 @@
 """Data update coordinator for the BluPow integration."""
 import logging
 from typing import Any, Dict
+from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -14,14 +15,14 @@ _LOGGER = logging.getLogger(__name__)
 class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
     """Class to manage fetching BluPow data with comprehensive error handling."""
 
-    def __init__(self, hass: HomeAssistant, client: BluPowClient) -> None:
+    def __init__(self, hass: HomeAssistant, client: BluPowClient, update_interval: int) -> None:
         """Initialize with comprehensive error handling."""
         try:
             super().__init__(
                 hass,
                 _LOGGER,
                 name="BluPow",
-                update_interval=30,  # Update every 30 seconds
+                update_interval=timedelta(seconds=update_interval),
             )
             
             self.client = client
