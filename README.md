@@ -2,7 +2,7 @@
 
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Compatible-blue.svg)](https://www.home-assistant.io/)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-green.svg)](https://python.org)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![Production Ready](https://img.shields.io/badge/Status-Production%20Ready-brightgreen.svg)](FINAL_SUCCESS_SUMMARY.md)
 
 > **Enterprise-grade Home Assistant integration for Renogy solar charge controllers with universal compatibility and intelligent environment detection.**
@@ -34,6 +34,13 @@ BluPow has evolved from a basic BLE client into a **sophisticated, environment-a
 - 🎯 **Device Type Recognition**: ESP32 vs DEFAULT device handling with optimized connection strategies
 - 📊 **Comprehensive Logging**: DEBUG-level logging for troubleshooting and monitoring
 - 🛡️ **Graceful Error Handling**: Robust connection management with automatic recovery
+
+## ❤️ Support This Project
+
+If you find BluPow useful, please consider supporting its development. Your contributions help cover the costs of hardware and caffeinated beverages!
+
+- **[Sponsor on GitHub](https://github.com/sponsors/MadGoatHaz)**
+- **[Send a tip via PayPal](https://www.paypal.com/paypalme/ghazlett)**
 
 ### Universal Compatibility Matrix
 
@@ -265,7 +272,7 @@ pip install -r requirements.txt
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
