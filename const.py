@@ -169,6 +169,30 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
     ),
+    SensorEntityDescription(
+        key="power_generation_total",
+        name="Total Power Generation",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=3,
+    ),
+    SensorEntityDescription(
+        key="charging_amp_hours_today",
+        name="Charging Amp Hours Today",
+        native_unit_of_measurement="Ah",
+        icon="mdi:battery-charging-50",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=2,
+    ),
+    SensorEntityDescription(
+        key="discharging_amp_hours_today",
+        name="Discharging Amp Hours Today",
+        native_unit_of_measurement="Ah",
+        icon="mdi:battery-minus",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=2,
+    ),
 )
 
 CONF_UPDATE_INTERVAL = "update_interval"

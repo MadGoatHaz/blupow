@@ -15,6 +15,8 @@ from datetime import datetime
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakDeviceNotFoundError, BleakError
 from bleak.backends.device import BLEDevice
+from homeassistant.core import HomeAssistant
+import homeassistant.components.bluetooth as bluetooth
 
 from .const import (
     RENOGY_SERVICE_UUID,
@@ -71,27 +73,31 @@ class EnvironmentInfo:
 class BluPowClient:
     """Enhanced BluPow client with proper Renogy protocol implementation"""
     
-    def __init__(self, device: BLEDevice):
-        self.device = device
-        self.address = device.address
-        self.name = device.name or "Unknown"
+    def __init__(self, address: str, hass: HomeAssistant):
+        self.address = address
+        self.hass = hass
+        self.name = address  # Default to address until device is found
         self.client: Optional[BleakClient] = None
         self.environment = EnvironmentInfo()
         self._connection_attempts = 0
         self._last_data = {}
         self._is_connected = False
-        
+        self._ble_device: Optional[BLEDevice] = None
+
         # ESPHome Bluetooth Proxy support
-        self._supports_esphome_proxy = self._detect_esphome_proxy()
+        # This will be checked later when device is available
+        self._supports_esphome_proxy = False
         
         _LOGGER.info(f"Environment detected: {self.environment}")
-        _LOGGER.info(f"BluPow client initialized for device: {self.name} ({self.address}) - Environment: {self.environment}")
+        _LOGGER.info(f"BluPow client initialized for address: {self.address} - Environment: {self.environment}")
         
     def _detect_esphome_proxy(self) -> bool:
         """Detect if ESPHome Bluetooth Proxy is available"""
+        if not self._ble_device:
+            return False
         # ESPHome proxies typically have specific characteristics
         # This is a basic detection - can be enhanced based on actual proxy detection
-        return hasattr(self.device, 'metadata') and 'esphome' in str(self.device.metadata).lower()
+        return hasattr(self._ble_device, 'metadata') and 'esphome' in str(self._ble_device.metadata).lower()
     
     async def discover_renogy_devices(self, timeout: float = DEFAULT_SCAN_TIMEOUT) -> List[Tuple[str, str, int]]:
         """
@@ -186,12 +192,20 @@ class BluPowClient:
         """Connect to the Renogy device using cyrils/renogy-bt method"""
         if self._is_connected:
             return True
-            
+
+        self._ble_device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
+        if not self._ble_device:
+            _LOGGER.warning(f"Renogy device {self.address} not found, will retry.")
+            return False
+
+        self.name = self._ble_device.name or self.address
+        self._supports_esphome_proxy = self._detect_esphome_proxy()
+
         try:
             _LOGGER.info(f"🔗 Connecting to Renogy device: {self.name} ({self.address})")
             
             # Direct connection without pairing (cyrils method)
-            self.client = BleakClient(self.device, timeout=DEFAULT_CONNECT_TIMEOUT)
+            self.client = BleakClient(self._ble_device, timeout=DEFAULT_CONNECT_TIMEOUT)
             
             await self.client.connect()
             
@@ -285,7 +299,10 @@ class BluPowClient:
                     'battery_soc': registers[5] if registers[5] != 0 else None,
                     'battery_temp': registers[6] - 40 if registers[6] != 0 else None,  # Celsius
                     'last_update': datetime.now().isoformat(),
-                    'connection_status': 'connected'
+                    'connection_status': 'connected',
+                    'power_generation_today': registers[17],
+                    'power_consumption_today': registers[18],
+                    'power_generation_total': ((registers[21] << 16) + registers[20]) / 1000.0, # in kWh
                 })
                 
                 _LOGGER.debug(f"Updated device data: {self._last_data}")
@@ -390,7 +407,7 @@ class BluPowClient:
                     'max_power_today': enhanced_data.get('max_power_today', 0),
                     'charging_status': enhanced_data.get('charging_status', 'unknown'),
                     'error_count': self._connection_attempts,
-                    'rssi': getattr(self.device, 'rssi', None)
+                    'rssi': getattr(self._ble_device, 'rssi', None)
                 })
                 
                 return enhanced_data
