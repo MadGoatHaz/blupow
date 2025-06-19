@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from bleak import BleakClient
-from bleak.exc import BleakError, BleakTimeoutError
+from bleak.exc import BleakError
 from bleak.backends.device import BLEDevice
 
 from homeassistant.core import HomeAssistant
@@ -28,71 +28,79 @@ class BluPowClient:
         self._hass = hass
         self._device = device
         self._notification_queue: asyncio.Queue[bytearray] = asyncio.Queue()
-        self._connection_attempts = 0
         self._max_retries = 3
+
+    @property
+    def name(self) -> str:
+        """Return the name of the device."""
+        return self._device.name or self._device.address
 
     async def _notification_handler(self, sender: int, data: bytearray):
         """Handle incoming notifications."""
         await self._notification_queue.put(data)
 
-    async def get_data(self) -> dict[str, Any]:
-        """Read device data with retry logic."""
-        for attempt in range(self._max_retries):
+    async def _get_client(self) -> BleakClient:
+        """Connect to the device and return the BleakClient instance."""
+        client = BleakClient(self._device, timeout=15.0)
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
             try:
-                _LOGGER.debug("Attempting to connect to %s (attempt %d/%d)", 
-                             self._device.address, attempt + 1, self._max_retries)
-                
-                # Use a shorter timeout for connection attempts
-                async with BleakClient(self._device, timeout=15.0) as client:
-                    _LOGGER.debug("Connected to %s", self._device.address)
-                    
-                    # First, try to get the model number
-                    try:
-                        raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
-                        model = raw_model.decode("utf-8").strip()
-                        _LOGGER.info("Successfully read model number: %s for %s", 
-                                   model, self._device.address)
-                    except Exception as e:
-                        _LOGGER.warning("Could not read model number: %s", e)
-                        model = "Unknown"
+                await client.connect()
+                _LOGGER.info(
+                    "%s: Connected to %s (attempt %d/%d)",
+                    self.name,
+                    self._device.address,
+                    attempt,
+                    max_attempts,
+                )
+                return client
+            except (BleakError, asyncio.TimeoutError) as e:
+                _LOGGER.warning(
+                    "%s: Error connecting to %s (attempt %d/%d): %s",
+                    self.name,
+                    self._device.address,
+                    attempt,
+                    max_attempts,
+                    e,
+                )
+                if attempt < max_attempts:
+                    await asyncio.sleep(2 * attempt)  # Exponential backoff
+                else:
+                    raise BleakError(
+                        f"Failed to connect to {self.name} after {max_attempts} attempts"
+                    ) from e
+        raise BleakError(f"Failed to connect to {self.name}")
 
-                    # Now, try to get the register data
-                    try:
-                        data = await self._read_registers(client, REG_BATTERY_VOLTAGE, 7)
-                        parsed_data = self._parse_data(data)
-                        return {"model_number": model, **parsed_data}
-                    except Exception as e:
-                        _LOGGER.warning("Could not read register data: %s", e)
-                        # Return basic data if register reading fails
-                        return {
-                            "model_number": model,
-                            "battery_voltage": None,
-                            "solar_voltage": None,
-                        }
-                        
-            except BleakTimeoutError as e:
-                _LOGGER.warning("Connection timeout to %s (attempt %d/%d): %s", 
-                              self._device.address, attempt + 1, self._max_retries, e)
-                if attempt == self._max_retries - 1:
-                    raise
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                
-            except BleakError as e:
-                _LOGGER.warning("Bluetooth error communicating with %s (attempt %d/%d): %s", 
-                              self._device.address, attempt + 1, self._max_retries, e)
-                if attempt == self._max_retries - 1:
-                    raise
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                
+    async def get_data(self) -> dict[str, Any]:
+        """Read device data."""
+        client = await self._get_client()
+        try:
+            # First, try to get the model number
+            try:
+                raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
+                model = raw_model.decode("utf-8").strip()
+                _LOGGER.info("Successfully read model number: %s for %s", 
+                           model, self._device.address)
             except Exception as e:
-                _LOGGER.error("Unexpected error communicating with %s (attempt %d/%d): %s", 
-                            self._device.address, attempt + 1, self._max_retries, e)
-                if attempt == self._max_retries - 1:
-                    raise
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                _LOGGER.warning("Could not read model number: %s", e)
+                model = "Unknown"
 
-        # If we get here, all attempts failed
-        raise BleakError(f"Failed to connect to {self._device.address} after {self._max_retries} attempts")
+            # Now, try to get the register data
+            try:
+                data = await self._read_registers(client, REG_BATTERY_VOLTAGE, 7)
+                parsed_data = self._parse_data(data)
+                return {"model_number": model, **parsed_data}
+            except Exception as e:
+                _LOGGER.warning("Could not read register data: %s", e)
+                # Return basic data if register reading fails
+                return {
+                    "model_number": model,
+                    "battery_voltage": None,
+                    "solar_voltage": None,
+                }
+        finally:
+            if client.is_connected:
+                await client.disconnect()
 
     async def _read_registers(
         self, client: BleakClient, start_register: int, count: int
@@ -144,7 +152,7 @@ class BluPowClient:
                 return response
 
             except asyncio.TimeoutError:
-                raise BleakTimeoutError("Timeout waiting for device response")
+                raise BleakError("Timeout waiting for device response")
 
         finally:
             # Always stop notifications
@@ -166,8 +174,6 @@ class BluPowClient:
 
         payload = data[3 : 3 + data_len]
 
-        # Parse the data based on register positions
-        # This is a simplified parser - you may need to adjust based on your device
         battery_voltage = None
         solar_voltage = None
 
