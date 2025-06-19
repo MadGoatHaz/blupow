@@ -29,6 +29,8 @@ class BluPowClient:
             self._connection_attempts = 0
             self._last_successful_connection = None
             self._last_error = None
+            self._max_retries = 3
+            self._base_timeout = 20.0  # Increased from 15.0
             
             _LOGGER.info("BluPow client initialized for device: %s (%s)", 
                         device.name or "Unknown", device.address)
@@ -68,60 +70,108 @@ class BluPowClient:
         start_time = datetime.now()
         self._connection_attempts += 1
         
+        # Try multiple connection attempts with exponential backoff
+        for attempt in range(self._max_retries):
+            try:
+                _LOGGER.info("Starting data retrieval for device %s (attempt %d/%d)", 
+                            self.address, attempt + 1, self._max_retries)
+                
+                # Calculate timeout with exponential backoff
+                timeout = self._base_timeout * (2 ** attempt)
+                
+                async with BleakClient(self._device, timeout=timeout) as client:
+                    _LOGGER.debug("Connected to device %s (timeout: %.1fs)", self.address, timeout)
+                    
+                    # Get model number
+                    model = await self._get_model_number(client)
+                    
+                    # Get register data
+                    register_data = await self._get_register_data(client)
+                    
+                    # Combine data
+                    result = {"model_number": model, **register_data}
+                    
+                    # Add metadata
+                    result.update({
+                        "connection_attempts": self._connection_attempts,
+                        "connection_retry_attempt": attempt + 1,
+                        "last_successful_connection": start_time.isoformat(),
+                        "connection_duration_ms": (datetime.now() - start_time).total_seconds() * 1000,
+                    })
+                    
+                    self._last_successful_connection = start_time
+                    self._last_error = None
+                    
+                    _LOGGER.info("Successfully retrieved data from %s: %s", 
+                               self.address, list(result.keys()))
+                    
+                    return result
+                    
+            except BleakDeviceNotFoundError as err:
+                error_msg = f"Device {self.address} not found"
+                _LOGGER.error("%s (attempt %d/%d): %s", error_msg, attempt + 1, self._max_retries, err)
+                self._last_error = error_msg
+                if attempt == self._max_retries - 1:
+                    return self._get_error_data(error_msg)
+                # Don't retry if device not found
+                break
+                
+            except BleakError as err:
+                error_msg = f"Connection failed to device {self.address}: {err}"
+                _LOGGER.error("%s (attempt %d/%d)", error_msg, attempt + 1, self._max_retries)
+                self._last_error = error_msg
+                
+                if attempt < self._max_retries - 1:
+                    # Wait before retry with exponential backoff
+                    wait_time = 2 ** attempt
+                    _LOGGER.info("Waiting %d seconds before retry...", wait_time)
+                    await asyncio.sleep(wait_time)
+                else:
+                    return self._get_error_data(error_msg)
+                    
+            except asyncio.TimeoutError as err:
+                error_msg = f"Timeout connecting to device {self.address}"
+                _LOGGER.error("%s (attempt %d/%d): %s", error_msg, attempt + 1, self._max_retries, err)
+                self._last_error = error_msg
+                
+                if attempt < self._max_retries - 1:
+                    # Wait before retry with exponential backoff
+                    wait_time = 2 ** attempt
+                    _LOGGER.info("Waiting %d seconds before retry...", wait_time)
+                    await asyncio.sleep(wait_time)
+                else:
+                    return self._get_error_data(error_msg)
+                    
+            except Exception as err:
+                error_msg = f"Unexpected error with device {self.address}: {err}"
+                _LOGGER.error("%s (attempt %d/%d)", error_msg, attempt + 1, self._max_retries)
+                self._last_error = error_msg
+                
+                if attempt < self._max_retries - 1:
+                    # Wait before retry with exponential backoff
+                    wait_time = 2 ** attempt
+                    _LOGGER.info("Waiting %d seconds before retry...", wait_time)
+                    await asyncio.sleep(wait_time)
+                else:
+                    return self._get_error_data(error_msg)
+        
+        # If we get here, all retries failed
+        return self._get_error_data(f"All {self._max_retries} connection attempts failed")
+
+    async def check_device_availability(self) -> bool:
+        """Check if the device is available for connection."""
         try:
-            _LOGGER.info("Starting data retrieval for device %s (attempt %d)", 
-                        self.address, self._connection_attempts)
+            _LOGGER.debug("Checking availability of device %s", self.address)
             
-            async with BleakClient(self._device, timeout=15.0) as client:
-                _LOGGER.debug("Connected to device %s", self.address)
+            # Try a quick connection to see if device responds
+            async with BleakClient(self._device, timeout=5.0) as client:
+                # Just check if we can connect, don't read data
+                _LOGGER.debug("Device %s is available", self.address)
+                return True
                 
-                # Get model number
-                model = await self._get_model_number(client)
-                
-                # Get register data
-                register_data = await self._get_register_data(client)
-                
-                # Combine data
-                result = {"model_number": model, **register_data}
-                
-                # Add metadata
-                result.update({
-                    "connection_attempts": self._connection_attempts,
-                    "last_successful_connection": start_time.isoformat(),
-                    "connection_duration_ms": (datetime.now() - start_time).total_seconds() * 1000,
-                })
-                
-                self._last_successful_connection = start_time
-                self._last_error = None
-                
-                _LOGGER.info("Successfully retrieved data from %s: %s", 
-                           self.address, list(result.keys()))
-                
-                return result
-                
-        except BleakDeviceNotFoundError as err:
-            error_msg = f"Device {self.address} not found"
-            _LOGGER.error("%s: %s", error_msg, err)
-            self._last_error = error_msg
-            return self._get_error_data(error_msg)
-            
-        except BleakError as err:
-            error_msg = f"Connection failed to device {self.address}: {err}"
-            _LOGGER.error("%s: %s", error_msg, err)
-            self._last_error = error_msg
-            return self._get_error_data(error_msg)
-            
-        except asyncio.TimeoutError as err:
-            error_msg = f"Timeout connecting to device {self.address}"
-            _LOGGER.error("%s: %s", error_msg, err)
-            self._last_error = error_msg
-            return self._get_error_data(error_msg)
-            
         except Exception as err:
-            error_msg = f"Unexpected error with device {self.address}: {err}"
-            _LOGGER.error(error_msg)
-            self._last_error = error_msg
-            return self._get_error_data(error_msg)
+            _LOGGER.debug("Device %s is not available: %s", self.address, err)
+            return False
 
     async def _get_model_number(self, client: BleakClient) -> str:
         """Get model number with error handling."""
@@ -184,6 +234,30 @@ class BluPowClient:
             # Clear any existing notifications
             await self._clear_notification_queue()
             
+            # Check if characteristics exist before trying to use them
+            try:
+                services = await client.get_services()
+                rx_char_found = False
+                tx_char_found = False
+                
+                for service in services:
+                    for char in service.characteristics:
+                        if char.uuid == RENOGY_RX_CHAR_UUID:
+                            rx_char_found = True
+                        elif char.uuid == RENOGY_TX_CHAR_UUID:
+                            tx_char_found = True
+                
+                if not rx_char_found:
+                    raise BleakError(f"RX characteristic {RENOGY_RX_CHAR_UUID} was not found")
+                if not tx_char_found:
+                    raise BleakError(f"TX characteristic {RENOGY_TX_CHAR_UUID} was not found")
+                    
+                _LOGGER.debug("Found required characteristics for device %s", self.address)
+                
+            except Exception as err:
+                _LOGGER.error("Error checking characteristics for %s: %s", self.address, err)
+                raise BleakError(f"Characteristic check failed: {err}")
+            
             # Start listening for notifications
             _LOGGER.debug("Starting notifications for device %s", self.address)
             await client.start_notify(RENOGY_RX_CHAR_UUID, self._notification_handler)
@@ -206,8 +280,11 @@ class BluPowClient:
                 # Always stop notifications
                 await self._stop_notifications(client)
                 
+        except BleakError as err:
+            _LOGGER.error("BLE error reading registers from %s: %s", self.address, err)
+            raise
         except Exception as err:
-            _LOGGER.error("Error reading registers from %s: %s", self.address, err)
+            _LOGGER.error("Unexpected error reading registers from %s: %s", self.address, err)
             raise
 
     async def _clear_notification_queue(self) -> None:

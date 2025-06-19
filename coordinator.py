@@ -70,21 +70,47 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 })
                 return current_data
             
+            # Check device availability before attempting data retrieval
+            try:
+                is_available = await self.client.check_device_availability()
+                if not is_available:
+                    _LOGGER.warning("Device %s is not available", self.client.address)
+                    current_data.update({
+                        "connection_status": "unavailable",
+                        "last_update": "unavailable",
+                        "error_count": current_data.get("error_count", 0) + 1,
+                        "last_error": "Device not available"
+                    })
+                    return current_data
+            except Exception as err:
+                _LOGGER.debug("Could not check device availability: %s", err)
+                # Continue anyway, the main connection attempt will handle this
+            
             # Attempt to fetch data
             _LOGGER.debug("Attempting to fetch data from BluPow device")
             data = await self.client.get_data()
             
             if data and isinstance(data, dict):
-                # Update data with new values
-                current_data.update(data)
-                current_data.update({
-                    "connection_status": "connected",
-                    "last_update": "success",
-                    "error_count": 0
-                })
-                
-                _LOGGER.info("Successfully fetched BluPow data: %s", data)
-                _LOGGER.debug("Updated data keys: %s", list(data.keys()))
+                # Check if we got actual data or just error data
+                if "error_message" in data:
+                    _LOGGER.warning("Received error data from device: %s", data.get("error_message"))
+                    current_data.update({
+                        "connection_status": "error",
+                        "last_update": "error",
+                        "error_count": current_data.get("error_count", 0) + 1,
+                        "last_error": data.get("error_message", "Unknown error")
+                    })
+                else:
+                    # Update data with new values
+                    current_data.update(data)
+                    current_data.update({
+                        "connection_status": "connected",
+                        "last_update": "success",
+                        "error_count": 0
+                    })
+                    
+                    _LOGGER.info("Successfully fetched BluPow data: %s", list(data.keys()))
+                    _LOGGER.debug("Updated data keys: %s", list(data.keys()))
                 
             else:
                 _LOGGER.warning("No valid data received from BluPow device")

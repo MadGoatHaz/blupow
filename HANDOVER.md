@@ -44,12 +44,22 @@ Custom Home Assistant integration for Renogy Bluetooth-enabled solar devices (Bl
    - **Root Cause**: The custom `data` property in `BluPowDataUpdateCoordinator` conflicted with the parent class's read-only `data` property, causing `property 'data' of 'BluPowDataUpdateCoordinator' object has no setter` errors.
    - **Solution**: Removed the custom `data` property and updated all methods to work with the parent class's built-in data handling mechanism. The coordinator now properly returns data from `_async_update_data()` which the parent class manages internally.
 
+9. **Bluetooth Connection Reliability** - IMPROVED (Latest)
+   - **Root Cause**: The integration was experiencing frequent `ESP_GATT_CONN_FAIL_ESTABLISH` and `ESP_GATT_CONN_TIMEOUT` errors due to insufficient retry logic and short timeouts.
+   - **Solution**: Implemented comprehensive connection improvements:
+     - Added retry logic with exponential backoff (3 attempts with increasing delays)
+     - Increased base timeout from 15s to 20s with exponential scaling
+     - Added characteristic validation before attempting data transfer
+     - Implemented device availability checking
+     - Enhanced error categorization and handling
+     - Added better logging for connection attempts and failures
+
 ### 🔄 CURRENT ISSUES
-1. **Bluetooth Connection Issues** - ONGOING
+1. **Bluetooth Connection Issues** - IMPROVED
    - Previous errors: "Timeout waiting for BluetoothDeviceConnectionResponse"
    - Previous errors: "ESP_GATT_CONN_FAIL_ESTABLISH"
-   - **Status**: Enhanced with comprehensive error handling and retry logic
-   - **Next**: Monitor connection attempts and success rates
+   - **Status**: Enhanced with comprehensive retry logic, exponential backoff, and better error handling
+   - **Next**: Monitor connection success rates with new improvements
 
 ### 📊 INTEGRATION HEALTH
 - **Loading**: ✅ Successful (no import errors)
