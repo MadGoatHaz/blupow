@@ -184,11 +184,32 @@ main() {
         mkdir -p "$CUSTOM_COMPONENTS_DIR"
     fi
     
+    # Check write permissions
+    if [ ! -w "$CUSTOM_COMPONENTS_DIR" ]; then
+        echo "❌ No write permission to $CUSTOM_COMPONENTS_DIR"
+        echo "   Try running with appropriate permissions or check directory ownership"
+        if [ "$HA_TYPE" = "docker" ]; then
+            echo "   For Docker installations, you may need to:"
+            echo "   1. Check if the directory is mounted with proper permissions"
+            echo "   2. Run: sudo chown -R $(whoami):$(whoami) $HA_CONFIG_DIR"
+            echo "   3. Or run this script with sudo"
+        fi
+        exit 1
+    fi
+    
     # Backup existing installation if it exists
     if [ -d "$BLUPOW_DIR" ]; then
         BACKUP_DIR="$BLUPOW_DIR.backup.$(date +%Y%m%d_%H%M%S)"
         echo "💾 Backing up existing installation to $BACKUP_DIR"
-        mv "$BLUPOW_DIR" "$BACKUP_DIR"
+        if ! mv "$BLUPOW_DIR" "$BACKUP_DIR" 2>/dev/null; then
+            echo "⚠️  Could not backup existing installation (permission issue)"
+            echo "   Attempting to remove and recreate..."
+            if ! rm -rf "$BLUPOW_DIR" 2>/dev/null; then
+                echo "❌ Cannot remove existing installation. Please run with sudo or fix permissions:"
+                echo "   sudo chown -R $(whoami):$(whoami) $BLUPOW_DIR"
+                exit 1
+            fi
+        fi
     fi
     
     # Create new blupow directory
@@ -215,8 +236,10 @@ main() {
     # Set proper permissions and ownership
     echo "🔐 Setting proper permissions..."
     set_proper_ownership
-    chmod -R 644 "$BLUPOW_DIR"
-    find "$BLUPOW_DIR" -type d -exec chmod 755 {} \;
+    
+    # Set file permissions (ignore errors if we don't have permission)
+    chmod -R 644 "$BLUPOW_DIR" 2>/dev/null || echo "⚠️  Could not set file permissions (continuing anyway)"
+    find "$BLUPOW_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || echo "⚠️  Could not set directory permissions (continuing anyway)"
     
     # Verify installation
     echo "✅ Verifying installation..."
