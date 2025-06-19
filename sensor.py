@@ -42,14 +42,11 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the BluPow sensor platform."""
-    data = hass.data[DOMAIN][entry.entry_id]
-    coordinator: BluPowDataUpdateCoordinator = data["coordinator"]
-
-    sensors_to_add = [
-        BluPowSensor(coordinator, entry, description) for description in DEVICE_SENSORS
-    ]
-    async_add_entities(sensors_to_add)
+    """Set up the BluPow sensor entities."""
+    coordinator: BluPowDataUpdateCoordinator = entry.runtime_data
+    async_add_entities(
+        BluPowSensor(coordinator, description) for description in DEVICE_SENSORS
+    )
 
 
 class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity):
@@ -58,18 +55,19 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
     def __init__(
         self,
         coordinator: BluPowDataUpdateCoordinator,
-        entry: ConfigEntry,
         description: SensorEntityDescription,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
         
-        self._attr_unique_id = f"{entry.data[CONF_ADDRESS]}_{description.key}"
+        self.coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.ble_device.address}_{self.entity_description.key}"
         self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, entry.data[CONF_ADDRESS])},
-            name=entry.title,
-            manufacturer="Renogy (via BluPow)",
+            connections={("bluetooth", coordinator.ble_device.address)},
+            name=coordinator.ble_device.name,
+            manufacturer="Renogy",
+            model=self.coordinator.data.get("model_number"),
         )
 
     @property

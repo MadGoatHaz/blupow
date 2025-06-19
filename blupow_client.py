@@ -7,6 +7,7 @@ from bleak import BleakClient
 from bleak.exc import BleakError
 from bleak.backends.device import BLEDevice
 
+from homeassistant.components.bluetooth import async_get_connectable_bleak_client
 from homeassistant.core import HomeAssistant
 
 from .const import (
@@ -23,9 +24,8 @@ _LOGGER = logging.getLogger(__name__)
 class BluPowClient:
     """A client to handle reading data from a Renogy device."""
 
-    def __init__(self, hass: HomeAssistant, device: BLEDevice):
+    def __init__(self, device: BLEDevice):
         """Initialize the BluPowClient."""
-        self._hass = hass
         self._device = device
         self._notification_queue: asyncio.Queue[bytearray] = asyncio.Queue()
         self._max_retries = 3
@@ -40,36 +40,8 @@ class BluPowClient:
         await self._notification_queue.put(data)
 
     async def _get_client(self) -> BleakClient:
-        """Connect to the device and return the BleakClient instance."""
-        client = BleakClient(self._device, timeout=15.0)
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            try:
-                await client.connect()
-                _LOGGER.info(
-                    "%s: Connected to %s (attempt %d/%d)",
-                    self.name,
-                    self._device.address,
-                    attempt,
-                    max_attempts,
-                )
-                return client
-            except (BleakError, asyncio.TimeoutError) as e:
-                _LOGGER.warning(
-                    "%s: Error connecting to %s (attempt %d/%d): %s",
-                    self.name,
-                    self._device.address,
-                    attempt,
-                    max_attempts,
-                    e,
-                )
-                if attempt < max_attempts:
-                    await asyncio.sleep(2 * attempt)  # Exponential backoff
-                else:
-                    raise BleakError(
-                        f"Failed to connect to {self.name} after {max_attempts} attempts"
-                    ) from e
-        raise BleakError(f"Failed to connect to {self.name}")
+        """Get a BleakClient instance for the device."""
+        return async_get_connectable_bleak_client(self._device)
 
     async def get_data(self) -> dict[str, Any]:
         """Read device data."""
