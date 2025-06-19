@@ -29,9 +29,16 @@ DEVICE_WRITE_CHAR: Final = "0000ffd3-0000-1000-8000-00805f9b34fb"
 DEVICE_READ_CHAR: Final = "0000ffd4-0000-1000-8000-00805f9b34fb"
 DEVICE_SPECIAL_CHAR: Final = "0000ffd5-0000-1000-8000-00805f9b34fb"
 
-# Legacy Renogy UUIDs (kept for backward compatibility)
-RENOGY_RX_CHAR_UUID: Final = "0000cd02-0000-1000-8000-00805f9b34fb"
-RENOGY_TX_CHAR_UUID: Final = "0000cd01-0000-1000-8000-00805f9b34fb"
+# Correct Renogy UUIDs from cyrils/renogy-bt protocol
+RENOGY_SERVICE_UUID: Final = "0000ffd0-0000-1000-8000-00805f9b34fb"  # Main service
+RENOGY_TX_CHAR_UUID: Final = "0000ffd1-0000-1000-8000-00805f9b34fb"  # TX (write to device)
+RENOGY_RX_CHAR_UUID: Final = "0000fff1-0000-1000-8000-00805f9b34fb"  # RX (notifications)
+RX_SERVICE_UUID: Final = "0000fff0-0000-1000-8000-00805f9b34fb"  # RX service
+RENOGY_MANUFACTURER_ID: Final = 0x7DE0  # Renogy manufacturer ID
+
+# Connection timeouts
+DEFAULT_SCAN_TIMEOUT: Final = 10.0
+DEFAULT_CONNECT_TIMEOUT: Final = 15.0
 
 # Register Addresses (for devices that support Modbus)
 REG_DEVICE_MODEL = 0x000A
