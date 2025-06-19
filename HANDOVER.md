@@ -1,4 +1,60 @@
-BluPow Project Handover & WorkflowLast Updated: 2025-06-191. Project StatusCurrent State: STABLE - FOUNDATION COMPLETEThe BluPow integration has successfully moved past the initial environmental and connection hurdles. We have achieved a stable foundation upon which to build the full feature set.Accomplishments:Successful Connection: A persistent, robust Bluetooth LE connection to the target Renogy device (BT-TH-6A667ED4) has been established from within the Home Assistant environment.GATT Service Discovery: The complete service and characteristic map of the target device has been successfully discovered and documented in const.py.Live Data Reading: The integration can successfully read our first real piece of data: the device's "Model Number".Core HA Structure: All necessary components for a native HACS integration are in place, including the config flow, data update coordinator, and sensor platform.Branding: The project logo and naming are correctly configured to appear in the Home Assistant UI.Immediate Next Steps:Commit this stable codebase to a new GitHub repository.Begin implementing the logic to read the main data channels (using the Notify characteristic 0000ffd2-0000-1000-8000-00805f9b34fb).Add logic to parse the incoming data frames (likely Modbus) into meaningful values (voltage, current, etc.).Create sensor entities for each of these new data points.2. Development Workflow (Mandatory)To ensure stability and prevent errors, all development will strictly adhere to the following workflow:Discussion: All new features, changes, or bug fixes will first be discussed and agreed upon in our conversation.Full Code Generation: I will generate complete, self-contained code files for any changes. You will never be asked to manually edit, patch, or configure code within a file. The correct procedure is to replace the entire old file with the new version I provide.Isolated Testing: You will copy the new/updated files into the custom_components/blupow/ directory, restart Home Assistant, and perform the requested tests.Feedback Loop: You will provide the results of the test (including any logs if necessary). Based on this feedback, we will proceed to the next step or I will provide a new, corrected set of files.3. Core Rules & PrecautionsRULE: NO CORE FILE EDITS. I will never again ask you to edit any files outside of the custom_components/blupow/ directory, especially not core Home Assistant files like core.config_entries. This was a serious mistake and is now a hard rule for this project.RULE: CLEANUP IS KEY. When encountering persistent or unusual errors (like already_configured), the first step is always to safely delete the integration from the Home Assistant UI. If it cannot be deleted from the UI, we will use a safe diagnostic script that does not create a configuration entry.RULE: FULL RESTARTS. For changes to take effect reliably, a full restart of the Home Assistant container (docker compose down && docker compose up -d) is the required method. A simple UI restart is not always sufficient.4. Environment NotesThese are critical details about the successful development environment that should be preserved.Operating System: Ubuntu 24.04Home Assistant Installation: Docker ComposeKey docker-compose.yaml settings: The following settings for the homeassistant service are required for Bluetooth hardware access to function correctly in this environment:services:
+BluPow Project Handover & Workflow
+Last Updated: 2025-06-19
+
+## 1. Project Status
+**Current State: DEBUGGING - PERSISTENT DEPLOYMENT ISSUES**
+
+The BluPow integration has encountered persistent deployment and initialization issues that need systematic resolution.
+
+### Critical Issues Identified:
+1. **ImportError: `async_get_connectable_bleak_client`** - This function doesn't exist in the current Home Assistant version
+2. **AttributeError: 'NoneType' object has no attribute 'get'** - Coordinator data is None when sensors are initialized
+3. **Deployment Issues** - Code changes not properly propagating to Home Assistant
+
+### Accomplishments:
+- ✅ Basic integration structure is correct
+- ✅ Config flow works for device discovery
+- ✅ Bluetooth device detection functional
+- ❌ Sensor initialization fails due to coordinator timing
+- ❌ Import compatibility issues with current HA version
+
+## 2. Development Workflow (Mandatory)
+
+### CRITICAL: Deployment Process
+1. **ALWAYS** delete the old integration completely: `sudo rm -rf /config/custom_components/blupow`
+2. **ALWAYS** copy fresh files: `sudo cp -r . /config/custom_components/blupow/`
+3. **ALWAYS** restart Home Assistant completely (not just UI restart)
+4. **NEVER** rely on file edits - always replace entire files
+
+### Error Resolution Protocol:
+1. **Import Errors**: Check Home Assistant version compatibility first
+2. **NoneType Errors**: Ensure coordinator data is available before sensor creation
+3. **Persistent Errors**: Complete deletion and redeployment required
+
+## 3. Core Rules & Precautions
+
+**RULE: COMPLETE FILE REPLACEMENT**
+- Never edit existing files in-place
+- Always replace entire files with corrected versions
+- Use `sudo` for deployment commands
+
+**RULE: VERSION COMPATIBILITY**
+- Check Home Assistant version before using new APIs
+- Use fallback methods for version-specific functions
+- Test with minimal, compatible code first
+
+**RULE: COORDINATOR TIMING**
+- Always call `await coordinator.async_config_entry_first_refresh()` before sensor setup
+- Make sensor initialization resilient to missing data
+- Use proper error handling for None values
+
+## 4. Environment Notes
+
+### Operating System: Ubuntu 24.04
+### Home Assistant Installation: Docker Compose
+### Key docker-compose.yaml settings:
+```yaml
+services:
   homeassistant:
     network_mode: host
     group_add:
@@ -6,4 +62,28 @@ BluPow Project Handover & WorkflowLast Updated: 2025-06-191. Project StatusCurre
     volumes:
       - /home/madgoat/opt/homeassistant/config:/config
       - /run/dbus:/run/dbus:ro
+```
+
+## 5. Current Blocking Issues
+
+### Issue 1: Import Compatibility
+- **Problem**: `async_get_connectable_bleak_client` doesn't exist
+- **Solution**: Use standard `BleakClient` with proper error handling
+- **Status**: Partially resolved, needs testing
+
+### Issue 2: Coordinator Data Timing
+- **Problem**: Sensors try to access `coordinator.data` before it's populated
+- **Solution**: Add `async_config_entry_first_refresh()` and resilient sensor initialization
+- **Status**: Partially resolved, needs testing
+
+### Issue 3: Deployment Reliability
+- **Problem**: Code changes not consistently applied
+- **Solution**: Complete deletion and redeployment process
+- **Status**: Process established, needs validation
+
+## 6. Next Steps
+1. Implement minimal, working version with standard BleakClient
+2. Add proper coordinator timing
+3. Test deployment process
+4. Gradually add features once basic functionality works
 
