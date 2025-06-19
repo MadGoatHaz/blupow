@@ -9,7 +9,7 @@ echo "🚀 BluPow Integration Deployment Script"
 echo "========================================"
 
 # Configuration
-HA_CONFIG_DIR="/usr/share/hassio/homeassistant"
+HA_CONFIG_DIR="/home/madgoat/opt/homeassistant/config"
 CUSTOM_COMPONENTS_DIR="$HA_CONFIG_DIR/custom_components"
 BLUPOW_DIR="$CUSTOM_COMPONENTS_DIR/blupow"
 SOURCE_DIR="$(pwd)"
@@ -74,7 +74,7 @@ fi
 
 # Set proper permissions
 echo "🔐 Setting proper permissions..."
-chown -R root:root "$BLUPOW_DIR"
+chown -R madgoat:madgoat "$BLUPOW_DIR"
 chmod -R 644 "$BLUPOW_DIR"
 find "$BLUPOW_DIR" -type d -exec chmod 755 {} \;
 
