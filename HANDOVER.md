@@ -32,6 +32,10 @@ Custom Home Assistant integration for Renogy Bluetooth-enabled solar devices (Bl
    - **Solution**: Corrected the device info creation in `sensor.py` to safely get the model number from coordinator data, finally resolving the `NoneType` crash.
    - **Process**: Added "ratchet" comments to key files to prevent future regressions from stale code.
 
+6. **BleakConnectionError ImportError** - FIXED (Latest)
+   - **Root Cause**: Identified that `BleakConnectionError` was removed from the `bleak` library in a recent update used by Home Assistant.
+   - **Solution**: Modified `blupow_client.py` to catch the more generic `BleakError` for connection-related issues, making the integration compatible with the new library version.
+
 ### 🔄 CURRENT ISSUES
 1. **Bluetooth Connection Issues** - ONGOING
    - Previous errors: "Timeout waiting for BluetoothDeviceConnectionResponse"
@@ -63,6 +67,9 @@ Home Assistant → Config Flow → Coordinator → BluPow Client → BLE Device
 ```
 
 ## Recent Changes (Latest Session - Power Sensor & Caching Fix)
+
+### Client Improvements (Latest)
+- **FIXED**: Corrected an `ImportError` for `BleakConnectionError` by updating the exception handling to use the base `BleakError`, ensuring compatibility with recent `bleak` library versions.
 
 ### Sensor Improvements (Latest)
 - **FIXED**: Removed hardcoded sensor list and now import `DEVICE_SENSORS` directly from `const.py`. All defined power sensors will now be created.
@@ -245,9 +252,9 @@ blupow/
 - **Deployment**: Remember that `sudo` may be required to update the files in the Home Assistant `custom_components` directory due to file ownership.
 - Integration is designed for Renogy BluPow devices specifically
 - Comprehensive error handling ensures stability even with connection issues
-- Latest changes have resolved the NoneType coordinator data error
+- Latest changes have resolved the `NoneType` and `ImportError` issues.
 
 ---
 **Last Updated**: 2025-01-20
-**Status**: Active Development - Power sensor suite implemented; caching issue identified and fixed. Ready for deployment and testing.
+**Status**: Active Development - Power sensor suite implemented; major dependency issues (caching, `bleak` imports) resolved. Ready for deployment and testing.
 

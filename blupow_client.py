@@ -4,8 +4,8 @@ import logging
 from typing import Any, Dict, Optional
 from datetime import datetime
 
-from bleak import BleakClient
-from bleak.exc import BleakError, BleakDeviceNotFoundError, BleakConnectionError
+from bleak import BleakClient, BleakError
+from bleak.exc import BleakDeviceNotFoundError
 from bleak.backends.device import BLEDevice
 
 from .const import (
@@ -105,8 +105,8 @@ class BluPowClient:
             self._last_error = error_msg
             return self._get_error_data(error_msg)
             
-        except BleakConnectionError as err:
-            error_msg = f"Connection failed to device {self.address}"
+        except BleakError as err:
+            error_msg = f"Connection failed to device {self.address}: {err}"
             _LOGGER.error("%s: %s", error_msg, err)
             self._last_error = error_msg
             return self._get_error_data(error_msg)
