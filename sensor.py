@@ -66,11 +66,13 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
         self.entity_description = description
         self._attr_unique_id = f"{coordinator.ble_device.address}_{description.key}"
         
-        # Minimal device info - no model number dependency
+        # Safe device info initialization
+        device_name = coordinator.ble_device.name or "BluPow Device"
         self._attr_device_info = DeviceInfo(
             connections={("bluetooth", coordinator.ble_device.address)},
-            name=coordinator.ble_device.name or "BluPow Device",
+            name=device_name,
             manufacturer="BluPow",
+            model=device_name,  # Use device name as model for now
         )
 
     @property
@@ -78,9 +80,12 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
         """Return the state of the sensor."""
         # Safe access to coordinator data
         if not self.coordinator.data:
+            _LOGGER.debug("No coordinator data available for %s", self.entity_description.key)
             return None
         
-        return self.coordinator.data.get(self.entity_description.key)
+        value = self.coordinator.data.get(self.entity_description.key)
+        _LOGGER.debug("Sensor %s value: %s", self.entity_description.key, value)
+        return value
 
     @property
     def available(self) -> bool:
