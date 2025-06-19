@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.components import bluetooth
 
 from .blupow_client import BluPowClient
 
@@ -26,7 +27,10 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             )
             
             self.client = client
-            self.ble_device = client._device if client else None
+            # Get BLE device from Home Assistant's bluetooth integration
+            self.ble_device = bluetooth.async_ble_device_from_address(
+                hass, client.address.upper(), connectable=True
+            ) if client else None
             
             _LOGGER.info("BluPow coordinator initialized successfully")
             _LOGGER.debug("BLE device: %s", self.ble_device)

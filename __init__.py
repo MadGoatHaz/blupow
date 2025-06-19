@@ -19,20 +19,21 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up BluPow from a config entry."""
-    try:
-        address = entry.data[CONF_ADDRESS]
-        _LOGGER.info("Setting up BluPow integration for address: %s", address)
+    address = entry.data[CONF_ADDRESS]
+    _LOGGER.info("Setting up BluPow integration for address: %s", address)
+
+    # First, check if the device is available
+    ble_device = bluetooth.async_ble_device_from_address(hass, address.upper(), connectable=True)
+    if not ble_device:
+        _LOGGER.warning("Could not find BLE device with address %s. Retrying setup.", address)
+        raise ConfigEntryNotReady(f"Could not find BLE device with address {address}")
+
+    _LOGGER.info("Found BLE device: %s", ble_device.name)
         
-        ble_device = bluetooth.async_ble_device_from_address(hass, address)
-        if not ble_device:
-            _LOGGER.error("Could not find BLE device with address %s", address)
-            raise ConfigEntryNotReady(f"Could not find BLE device with address {address}")
-
-        _LOGGER.info("Found BLE device: %s (%s)", ble_device.name, ble_device.address)
-
-        # Create the client first
-        client = BluPowClient(ble_device)
-        _LOGGER.info("Created BluPow client")
+    try:
+        # Create the client with the address, connection is handled by the coordinator
+        client = BluPowClient(address, hass)
+        _LOGGER.info("Created BluPow client for address: %s", address)
         
         update_interval = entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
         
