@@ -54,12 +54,26 @@ Custom Home Assistant integration for Renogy Bluetooth-enabled solar devices (Bl
      - Enhanced error categorization and handling
      - Added better logging for connection attempts and failures
 
+10. **Data Parsing and Model Number Issues** - IMPROVED (Latest)
+    - **Root Cause**: Model number was returning raw data format (`TC,R2#4,1,248,S`) and register data parsing was failing, leaving all sensors as "Unknown".
+    - **Solution**: Implemented comprehensive data parsing improvements:
+      - Enhanced model number parsing with better UTF-8 handling and cleanup
+      - Added alternative data reading approach when Modbus protocol fails
+      - Implemented characteristic discovery and individual reading
+      - Added detailed debugging for raw data analysis
+      - Relaxed device availability checking to allow more connection attempts
+      - Added fallback data reading methods for different device protocols
+
 ### 🔄 CURRENT ISSUES
 1. **Bluetooth Connection Issues** - IMPROVED
    - Previous errors: "Timeout waiting for BluetoothDeviceConnectionResponse"
    - Previous errors: "ESP_GATT_CONN_FAIL_ESTABLISH"
    - **Status**: Enhanced with comprehensive retry logic, exponential backoff, and better error handling
    - **Next**: Monitor connection success rates with new improvements
+
+2. **Data Parsing and Protocol Compatibility** - IMPROVED
+   - **Status**: Model number reading working, sensors created successfully
+   - **Next**: Analyze raw data format and implement proper parsing for sensor values
 
 ### 📊 INTEGRATION HEALTH
 - **Loading**: ✅ Successful (no import errors)

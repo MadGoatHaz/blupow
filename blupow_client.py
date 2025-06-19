@@ -164,24 +164,44 @@ class BluPowClient:
             _LOGGER.debug("Checking availability of device %s", self.address)
             
             # Try a quick connection to see if device responds
-            async with BleakClient(self._device, timeout=5.0) as client:
+            async with BleakClient(self._device, timeout=3.0) as client:
                 # Just check if we can connect, don't read data
                 _LOGGER.debug("Device %s is available", self.address)
                 return True
                 
         except Exception as err:
-            _LOGGER.debug("Device %s is not available: %s", self.address, err)
-            return False
+            _LOGGER.debug("Device %s quick check failed: %s", self.address, err)
+            # Don't fail completely - let the main connection attempt try
+            return True  # Changed from False to True to allow main attempt
 
     async def _get_model_number(self, client: BleakClient) -> str:
         """Get model number with error handling."""
         try:
             _LOGGER.debug("Reading model number from device %s", self.address)
             raw_model = await client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
-            model = raw_model.decode("utf-8").strip()
-            _LOGGER.info("Successfully read model number: %s for %s", 
-                       model, self.address)
-            return model
+            
+            # Log the raw data for debugging
+            _LOGGER.debug("Raw model number data: %s (hex: %s)", raw_model, raw_model.hex())
+            
+            # Try to decode as UTF-8
+            try:
+                model = raw_model.decode("utf-8").strip()
+                _LOGGER.debug("Decoded as UTF-8: %s", model)
+            except UnicodeDecodeError:
+                # If UTF-8 fails, try to interpret as hex or other format
+                _LOGGER.debug("UTF-8 decode failed, trying alternative parsing")
+                model = raw_model.hex().upper()
+            
+            # Clean up the model number
+            if model and model != "Unknown":
+                # Remove any non-printable characters
+                model = ''.join(char for char in model if char.isprintable() or char in ',.#')
+                _LOGGER.info("Successfully read model number: %s for %s", model, self.address)
+                return model
+            else:
+                _LOGGER.warning("Empty or invalid model number from %s", self.address)
+                return "Unknown"
+                
         except Exception as err:
             _LOGGER.warning("Could not read model number from %s: %s", self.address, err)
             return "Unknown"
@@ -190,12 +210,70 @@ class BluPowClient:
         """Get register data with error handling."""
         try:
             _LOGGER.debug("Reading register data from device %s", self.address)
-            data = await self._read_registers(client, REG_BATTERY_SOC, 10)
-            parsed_data = self._parse_data(data)
-            _LOGGER.debug("Successfully parsed register data: %s", list(parsed_data.keys()))
-            return parsed_data
+            
+            # Try to read register data
+            try:
+                data = await self._read_registers(client, REG_BATTERY_SOC, 10)
+                _LOGGER.debug("Raw register data received: %s", data.hex())
+                parsed_data = self._parse_data(data)
+                _LOGGER.debug("Successfully parsed register data: %s", list(parsed_data.keys()))
+                return parsed_data
+            except Exception as reg_err:
+                _LOGGER.warning("Register reading failed for %s: %s", self.address, reg_err)
+                
+                # Try alternative approach - read individual characteristics
+                _LOGGER.info("Trying alternative data reading approach for %s", self.address)
+                return await self._try_alternative_data_reading(client)
+                
         except Exception as err:
             _LOGGER.warning("Could not read register data from %s: %s", self.address, err)
+            return self._get_default_register_data()
+
+    async def _try_alternative_data_reading(self, client: BleakClient) -> Dict[str, Any]:
+        """Try alternative methods to read device data."""
+        try:
+            _LOGGER.debug("Attempting alternative data reading for %s", self.address)
+            
+            # Get all services and characteristics
+            services = await client.get_services()
+            _LOGGER.debug("Found %d services for device %s", len(services), self.address)
+            
+            result = self._get_default_register_data()
+            
+            for service in services:
+                _LOGGER.debug("Service %s: %s", service.uuid, service.description)
+                for char in service.characteristics:
+                    _LOGGER.debug("  Characteristic %s: %s (props: %s)", 
+                                 char.uuid, char.description, char.properties)
+                    
+                    # Try to read readable characteristics
+                    if "read" in char.properties:
+                        try:
+                            data = await client.read_gatt_char(char.uuid)
+                            _LOGGER.debug("  Read %s: %s (hex: %s)", char.uuid, data, data.hex())
+                            
+                            # Try to parse as numeric data
+                            if len(data) >= 2:
+                                value = int.from_bytes(data[:2], "big")
+                                _LOGGER.debug("  Parsed as 16-bit value: %d", value)
+                                
+                                # Map characteristic UUIDs to sensor names if possible
+                                if "battery" in char.description.lower() or "voltage" in char.description.lower():
+                                    result["battery_voltage"] = value / 10.0  # Assume 0.1V resolution
+                                elif "current" in char.description.lower():
+                                    result["battery_current"] = value / 100.0  # Assume 0.01A resolution
+                                elif "soc" in char.description.lower() or "charge" in char.description.lower():
+                                    result["battery_soc"] = value
+                                elif "temp" in char.description.lower():
+                                    result["battery_temp"] = value
+                                    
+                        except Exception as char_err:
+                            _LOGGER.debug("  Could not read characteristic %s: %s", char.uuid, char_err)
+            
+            return result
+            
+        except Exception as err:
+            _LOGGER.error("Alternative data reading failed for %s: %s", self.address, err)
             return self._get_default_register_data()
 
     def _get_error_data(self, error_message: str) -> Dict[str, Any]:
