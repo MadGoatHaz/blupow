@@ -1,39 +1,47 @@
-"""The DataUpdateCoordinator for the BluPow integration."""
+"""Data update coordinator for the BluPow integration."""
 import logging
-from datetime import timedelta
 from typing import Any
 
-from bleak.backends.device import BLEDevice
-from bleak.exc import BleakError
-
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .blupow_client import BluPowClient
-from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-SCAN_INTERVAL = timedelta(seconds=60)
 
 
 class BluPowDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Manages polling for data and coordinating updates."""
+    """Class to manage fetching BluPow data."""
 
-    def __init__(self, hass: HomeAssistant, ble_device: BLEDevice):
-        """Initialize the data update coordinator."""
+    def __init__(self, hass: HomeAssistant, client: BluPowClient) -> None:
+        """Initialize."""
         super().__init__(
             hass,
             _LOGGER,
-            name=f"{DOMAIN}_{ble_device.name or ble_device.address}",
-            update_interval=SCAN_INTERVAL,
+            name="BluPow",
+            update_interval=None,  # We'll update manually for now
         )
-        self.ble_device = ble_device
-        self.client = BluPowClient(ble_device)
+        self.client = client
+        self.ble_device = client._device
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from the Bluetooth device."""
+        """Update data via BluPow client."""
         try:
-            return await self.client.get_data()
-        except BleakError as err:
-            raise UpdateFailed(f"Failed to communicate with device: {err}") from err
+            _LOGGER.info("Attempting to fetch data from BluPow device")
+            data = await self.client.get_data()
+            _LOGGER.info("Successfully fetched data: %s", data)
+            return data
+        except Exception as err:
+            _LOGGER.error("Error fetching BluPow data: %s", err)
+            # Return empty data instead of raising
+            return {
+                "model_number": "Unknown",
+                "battery_voltage": None,
+                "solar_voltage": None,
+                "battery_current": None,
+                "solar_current": None,
+                "battery_soc": None,
+                "battery_temp": None,
+                "solar_power": None,
+            }
 

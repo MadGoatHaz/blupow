@@ -44,9 +44,13 @@ async def async_setup_entry(
 ) -> None:
     """Set up the BluPow sensor entities."""
     coordinator: BluPowDataUpdateCoordinator = entry.runtime_data
-    async_add_entities(
-        BluPowSensor(coordinator, description) for description in DEVICE_SENSORS
-    )
+    
+    # Create sensors with minimal initialization
+    entities = []
+    for description in DEVICE_SENSORS:
+        entities.append(BluPowSensor(coordinator, description))
+    
+    async_add_entities(entities)
 
 
 class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity):
@@ -60,34 +64,26 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.entity_description = description
+        self._attr_unique_id = f"{coordinator.ble_device.address}_{description.key}"
         
-        self.coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.ble_device.address}_{self.entity_description.key}"
+        # Minimal device info - no model number dependency
         self._attr_device_info = DeviceInfo(
             connections={("bluetooth", coordinator.ble_device.address)},
-            name=coordinator.ble_device.name,
-            manufacturer="Renogy",
-            model=self.coordinator.data.get("model_number"),
+            name=coordinator.ble_device.name or "BluPow Device",
+            manufacturer="BluPow",
         )
 
     @property
-    def native_value(self) -> str | float | None:
-        """Return the state of the sensor from the coordinator."""
-        if self.coordinator.data:
-            value = self.coordinator.data.get(self.entity_description.key)
-            if value is None:
-                return None
-            # For numeric sensors, ensure we return a number
-            if self.entity_description.key in ["battery_voltage", "solar_voltage"]:
-                try:
-                    return float(value)
-                except (ValueError, TypeError):
-                    return None
-            return value
-        return None
+    def native_value(self):
+        """Return the state of the sensor."""
+        # Safe access to coordinator data
+        if not self.coordinator.data:
+            return None
+        
+        return self.coordinator.data.get(self.entity_description.key)
 
     @property
     def available(self) -> bool:
         """Return if the entity is available."""
-        return self.coordinator.last_update_success and self.native_value is not None
+        return self.coordinator.last_update_success
 

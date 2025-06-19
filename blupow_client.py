@@ -12,8 +12,6 @@ from .const import (
     RENOGY_RX_CHAR_UUID,
     RENOGY_TX_CHAR_UUID,
     REG_BATTERY_SOC,
-    REG_BATTERY_VOLTAGE,
-    REG_SOLAR_VOLTAGE,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,8 +24,8 @@ class BluPowClient:
         """Initialize the BluPowClient."""
         self._device = device
         self._notification_queue: asyncio.Queue[bytearray] = asyncio.Queue()
-        self._max_retries = 3
 
+    @property
     def name(self) -> str:
         """Return the name of the device."""
         return self._device.name or self._device.address
