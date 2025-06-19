@@ -64,19 +64,26 @@ class BluPowClient:
 
     async def get_data(self) -> dict[str, Any]:
         """Read device data."""
-        async with self._lock:
-            if not await self._ensure_connected():
-                raise BleakError("Could not connect to the device.")
+        # This will acquire a lock if it needs to connect, and then release it.
+        if not await self._ensure_connected():
+            raise BleakError("Could not connect to the device.")
 
+        # This lock ensures that we don't have multiple data reads happening at once.
+        async with self._lock:
+            if not self.is_connected:
+                # Connection could have been lost between checks
+                raise BleakError("Device got disconnected")
             try:
                 # First, get the model number
                 raw_model = await self._client.read_gatt_char(MODEL_NUMBER_CHAR_UUID)
                 model = raw_model.decode("utf-8").strip()
                 _LOGGER.info("Successfully read model number: %s", model)
-                
+
                 # Now, get the rest of the data
-                data = await self._read_registers(REG_BATTERY_VOLTAGE, 7) # Read 7 registers starting from battery voltage
-                
+                data = await self._read_registers(
+                    REG_BATTERY_VOLTAGE, 7
+                )  # Read 7 registers starting from battery voltage
+
                 parsed_data = self._parse_data(data)
 
                 return {"model_number": model, **parsed_data}
@@ -85,9 +92,16 @@ class BluPowClient:
                 raise BleakError(f"Failed to read device data: {e}") from e
 
     async def _read_registers(self, start_register: int, count: int) -> bytearray:
-        """Read a range of registers from the device."""
+        """
+        Read a range of registers from the device.
+        Assumes the caller is holding the lock.
+        """
+        # Clear queue of old data
+        while not self._notification_queue.empty():
+            self._notification_queue.get_nowait()
+
         await self._client.start_notify(RENOGY_RX_CHAR_UUID, self._notification_handler)
-        
+
         # Command to read registers
         # Format: ff 03 <start_reg_high> <start_reg_low> <count_high> <count_low> <crc>
         command = bytearray([0xff, 0x03, start_register >> 8, start_register & 0xff, 0x00, count])
@@ -96,16 +110,23 @@ class BluPowClient:
         command.extend([0x00, 0x00])
 
         await self._client.write_gatt_char(RENOGY_TX_CHAR_UUID, command, response=True)
-        
+
         response = bytearray()
         try:
-            while True:
-                notification = await asyncio.wait_for(self._notification_queue.get(), timeout=5.0)
+            # First notification contains the header and length
+            notification = await asyncio.wait_for(self._notification_queue.get(), timeout=5.0)
+
+            if len(notification) < 3 or notification[0] != 0xFF or notification[1] != 0x03:
+                raise ValueError(f"Invalid header in first notification: {notification}")
+
+            response.extend(notification)
+            expected_payload_len = notification[2]
+
+            # Keep reading until we have the full payload
+            while len(response) < 3 + expected_payload_len:
+                notification = await asyncio.wait_for(self._notification_queue.get(), timeout=2.0)
                 response.extend(notification)
-                # The response ends when the length is as expected.
-                # The first 3 bytes are header, then 2 bytes per register.
-                if len(response) >= 3 + count * 2:
-                    break
+
         finally:
             await self._client.stop_notify(RENOGY_RX_CHAR_UUID)
 
@@ -113,20 +134,22 @@ class BluPowClient:
 
     def _parse_data(self, data: bytearray) -> dict[str, Any]:
         """Parse the raw data from the device."""
-        # ff 03 0e <data> <crc>
+        # ff 03 <len> <data> <crc>
         if len(data) < 3 or data[0] != 0xff or data[1] != 0x03:
-            raise ValueError("Invalid response from device")
+            raise ValueError(f"Invalid response header: {data}")
 
         data_len = data[2]
         if len(data) < 3 + data_len:
-            raise ValueError("Incomplete response from device")
+            raise ValueError(f"Incomplete response: expected {3+data_len} bytes, got {len(data)}")
 
-        payload = data[3:3 + data_len]
-        
+        payload = data[3 : 3 + data_len]
+
         # For now, we only parse battery and solar voltage
+        # payload[0:2] corresponds to REG_BATTERY_VOLTAGE (0x0101) because we started reading from there.
         battery_voltage = int.from_bytes(payload[0:2], "big") / 10
-        solar_voltage = int.from_bytes(payload[12:14], "big") / 10 # 0x0107 is 6 registers after 0x0101
-        
+        # REG_SOLAR_VOLTAGE (0x0107) is at offset 6*2=12 bytes from start register 0x0101
+        solar_voltage = int.from_bytes(payload[12:14], "big") / 10
+
         return {
             "battery_voltage": battery_voltage,
             "solar_voltage": solar_voltage,
