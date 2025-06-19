@@ -1,10 +1,18 @@
-"""API client for interacting with Renogy Bluetooth devices."""
+"""
+BluPow BLE Client for Home Assistant Integration
+
+This client implements proactive environment detection and universal compatibility
+following the BluPow Project Ideology.
+"""
+
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+import platform
+import sys
+from typing import Any, Dict, Optional, List, Tuple
 from datetime import datetime
 
-from bleak import BleakClient, BleakError
+from bleak import BleakClient, BleakScanner, BleakError
 from bleak.exc import BleakDeviceNotFoundError
 from bleak.backends.device import BLEDevice
 
@@ -17,9 +25,105 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+class EnvironmentInfo:
+    """Detect and store information about the current environment"""
+    
+    def __init__(self):
+        self.platform = platform.system()
+        self.python_version = sys.version_info
+        self.is_docker = self._detect_docker()
+        self.is_hassio = self._detect_hassio()
+        self.ble_backend = self._detect_ble_backend()
+        self.capabilities = self._detect_capabilities()
+        
+        _LOGGER.info(f"Environment detected: {self}")
+    
+    def _detect_docker(self) -> bool:
+        """Detect if running in Docker container"""
+        try:
+            with open('/proc/1/cgroup', 'r') as f:
+                return 'docker' in f.read() or 'containerd' in f.read()
+        except (FileNotFoundError, PermissionError):
+            # Check for common Docker environment variables
+            import os
+            return any(var in os.environ for var in ['DOCKER_CONTAINER', 'HOSTNAME']) and \
+                   os.path.exists('/.dockerenv')
+    
+    def _detect_hassio(self) -> bool:
+        """Detect if running in Home Assistant OS/Supervised"""
+        import os
+        return os.path.exists('/usr/share/hassio') or \
+               os.path.exists('/etc/hassio.json') or \
+               'HASSIO' in os.environ
+    
+    def _detect_ble_backend(self) -> str:
+        """Detect which BLE backend is being used"""
+        if self.platform == "Linux":
+            return "BlueZ"
+        elif self.platform == "Windows":
+            return "WinRT"
+        elif self.platform == "Darwin":
+            return "CoreBluetooth"
+        else:
+            return "Unknown"
+    
+    def _detect_capabilities(self) -> Dict[str, bool]:
+        """Detect system capabilities"""
+        capabilities = {
+            'extended_scanning': self.platform == "Linux",
+            'rssi_monitoring': True,
+            'concurrent_connections': not self.is_docker,  # Docker may have limitations
+            'characteristic_caching': True,
+            'service_discovery_caching': self.python_version >= (3, 8),
+        }
+        
+        # Platform-specific adjustments
+        if self.platform == "Windows":
+            capabilities['extended_scanning'] = False
+        elif self.is_hassio:
+            capabilities['concurrent_connections'] = False  # Conservative approach
+            
+        return capabilities
+    
+    def __str__(self) -> str:
+        return (f"Platform: {self.platform}, Python: {self.python_version[:2]}, "
+                f"Docker: {self.is_docker}, HassIO: {self.is_hassio}, "
+                f"BLE: {self.ble_backend}")
 
 class BluPowClient:
-    """A client to handle reading data from a Renogy device with comprehensive error handling."""
+    """Enhanced BluPow BLE client with environment awareness"""
+    
+    # Device-specific configuration
+    DEVICE_CONFIGS = {
+        'ESP32': {
+            'connection_delay': 5,  # Base delay for ESP32
+            'retry_multiplier': 3,  # Additional delay per retry
+            'max_retries': 3,
+            'timeout_base': 20,
+            'characteristics_delay': 2,  # Extra delay after connection
+        },
+        'DEFAULT': {
+            'connection_delay': 1,
+            'retry_multiplier': 2,
+            'max_retries': 3,
+            'timeout_base': 15,
+            'characteristics_delay': 0.5,
+        }
+    }
+    
+    # Multiple possible UUIDs for different firmware versions
+    CHARACTERISTIC_UUIDS = {
+        'rx': [
+            "6E400002-B5A3-F393-E0A9-E50E24DCCA9E",  # Nordic UART RX
+            "0000FFE1-0000-1000-8000-00805F9B34FB",  # Common ESP32 RX
+            "6E400003-B5A3-F393-E0A9-E50E24DCCA9E",  # Alternative RX
+        ],
+        'tx': [
+            "6E400003-B5A3-F393-E0A9-E50E24DCCA9E",  # Nordic UART TX
+            "0000FFE1-0000-1000-8000-00805F9B34FB",  # Common ESP32 TX
+            "6E400002-B5A3-F393-E0A9-E50E24DCCA9E",  # Alternative TX
+        ]
+    }
 
     def __init__(self, device: BLEDevice):
         """Initialize the BluPowClient with comprehensive error handling."""
@@ -32,6 +136,9 @@ class BluPowClient:
             self._max_retries = 3
             self._base_timeout = 20.0  # Increased from 15.0
             self._discovered_characteristics = {}  # Cache discovered characteristics
+            self.environment = EnvironmentInfo()
+            self.device_type = "DEFAULT"  # Will be detected
+            self._connection_lock = asyncio.Lock()
             
             _LOGGER.info("BluPow client initialized for device: %s (%s)", 
                         device.name or "Unknown", device.address)
@@ -215,54 +322,91 @@ class BluPowClient:
             return "Unknown"
 
     async def _discover_characteristics(self, client: BleakClient) -> Dict[str, Any]:
-        """Discover available characteristics and cache them."""
+        """Discover and categorize characteristics with caching"""
+        if self._discovered_characteristics is not None:
+            _LOGGER.debug("Using cached characteristics")
+            return self._discovered_characteristics
+
+        _LOGGER.debug("Discovering device characteristics...")
+        
+        # Wait a bit after connection for service discovery to complete
+        config = self._get_device_config()
+        await asyncio.sleep(config['characteristics_delay'])
+        
         try:
-            if hasattr(client, 'services'):
-                # Use the services property instead of get_services() method
-                services = client.services
-            else:
-                # Fallback for older bleak versions
-                services = await client.get_services()
-            
-            # Convert to list to avoid BleakGATTServiceCollection issues
-            services_list = list(services)
-            _LOGGER.debug("Found %d services for device %s", len(services_list), self.address)
+            services = await self._get_services_compatible(client)
+            if not services:
+                raise Exception("No services discovered")
             
             characteristics = {
                 'rx_chars': [],
                 'tx_chars': [],
                 'readable_chars': [],
+                'writable_chars': [],
                 'all_chars': []
             }
             
-            for service in services_list:
-                _LOGGER.debug("Service: %s - %s", service.uuid, service.description or "Unknown")
+            for service in services:
+                _LOGGER.debug(f"Service: {service.uuid}")
                 for char in service.characteristics:
                     char_info = {
                         'uuid': char.uuid,
-                        'description': char.description or "Unknown",
                         'properties': char.properties,
                         'service_uuid': service.uuid
                     }
                     characteristics['all_chars'].append(char_info)
                     
-                    # Categorize characteristics
-                    if "notify" in char.properties or "indicate" in char.properties:
-                        characteristics['rx_chars'].append(char_info)
-                    if "write" in char.properties or "write-without-response" in char.properties:
-                        characteristics['tx_chars'].append(char_info)
+                    # Categorize by properties
                     if "read" in char.properties:
                         characteristics['readable_chars'].append(char_info)
+                    if "write" in char.properties or "write-without-response" in char.properties:
+                        characteristics['writable_chars'].append(char_info)
                     
-                    _LOGGER.debug("  Characteristic: %s - %s (props: %s)", 
-                                 char.uuid, char.description or "Unknown", char.properties)
+                    # Check against known UUIDs
+                    char_uuid_upper = char.uuid.upper()
+                    for rx_uuid in self.CHARACTERISTIC_UUIDS['rx']:
+                        if char_uuid_upper == rx_uuid.upper():
+                            characteristics['rx_chars'].append(char_info)
+                            break
+                    
+                    for tx_uuid in self.CHARACTERISTIC_UUIDS['tx']:
+                        if char_uuid_upper == tx_uuid.upper():
+                            characteristics['tx_chars'].append(char_info)
+                            break
+                    
+                    _LOGGER.debug(f"  Characteristic: {char.uuid} - Properties: {char.properties}")
             
             self._discovered_characteristics = characteristics
+            _LOGGER.info(f"Discovered {len(characteristics['all_chars'])} characteristics, "
+                        f"{len(characteristics['rx_chars'])} RX, {len(characteristics['tx_chars'])} TX")
+            
             return characteristics
             
-        except Exception as err:
-            _LOGGER.error("Error discovering characteristics: %s", err)
-            return {}
+        except Exception as e:
+            _LOGGER.error(f"Characteristic discovery failed: {e}")
+            raise
+
+    async def _get_services_compatible(self, client: BleakClient):
+        """Get services using the most compatible method"""
+        try:
+            # Try modern API first
+            if hasattr(client, 'services') and client.services:
+                _LOGGER.debug("Using modern services property")
+                return client.services
+            
+            # Fallback to legacy method
+            _LOGGER.debug("Falling back to get_services() method")
+            if hasattr(client, 'get_services'):
+                return await client.get_services()
+            
+            # Last resort - try to access services after connection
+            if client.is_connected:
+                await asyncio.sleep(1)  # Give time for service discovery
+                return client.services if hasattr(client, 'services') else None
+                
+        except Exception as e:
+            _LOGGER.warning(f"Service discovery failed: {e}")
+            return None
 
     async def _get_register_data(self, client: BleakClient) -> Dict[str, Any]:
         """Get register data with error handling."""
@@ -710,4 +854,262 @@ class BluPowClient:
             _LOGGER.debug("Stopped notifications for device %s with UUID %s", self.address, rx_uuid)
         except Exception as err:
             _LOGGER.debug("Error stopping notifications for %s: %s", self.address, err)
+
+    def _detect_device_type(self, device_name: str = "") -> str:
+        """Detect device type based on name or other characteristics"""
+        device_name = device_name.lower()
+        if 'esp32' in device_name or 'esp' in device_name:
+            return 'ESP32'
+        return 'DEFAULT'
+
+    def _get_device_config(self) -> Dict[str, Any]:
+        """Get configuration for the detected device type"""
+        config = self.DEVICE_CONFIGS.get(self.device_type, self.DEVICE_CONFIGS['DEFAULT']).copy()
+        
+        # Environment-specific adjustments
+        if self.environment.is_docker:
+            config['timeout_base'] += 5  # Docker networking can be slower
+            config['connection_delay'] += 1
+        
+        if self.environment.is_hassio:
+            config['max_retries'] = 2  # Be conservative on HassIO
+            
+        if self.environment.platform == "Windows":
+            config['characteristics_delay'] += 1  # Windows BLE can be slower
+            
+        return config
+
+    async def connect(self) -> bool:
+        """Connect to the BluPow device with environment-aware retry logic"""
+        if self.client and self.client.is_connected:
+            return True
+            
+        async with self._connection_lock:
+            if self.client and self.client.is_connected:  # Double-check after acquiring lock
+                return True
+                
+            config = self._get_device_config()
+            
+            for attempt in range(config['max_retries']):
+                try:
+                    _LOGGER.info(f"Connection attempt {attempt + 1}/{config['max_retries']} to {self.address}")
+                    
+                    # Progressive timeout
+                    timeout = min(config['timeout_base'] + (attempt * 5), 30)
+                    
+                    # Create client
+                    self.client = BleakClient(self.address, timeout=timeout)
+                    
+                    # Environment-specific connection delay
+                    if attempt > 0:
+                        delay = config['connection_delay'] + (attempt * config['retry_multiplier'])
+                        _LOGGER.debug(f"Waiting {delay}s before connection attempt (environment: {self.environment.platform})")
+                        await asyncio.sleep(delay)
+                    
+                    # Attempt connection
+                    await self.client.connect()
+                    
+                    if self.client.is_connected:
+                        _LOGGER.info(f"Successfully connected to {self.address}")
+                        self.is_connected = True
+                        
+                        # Detect device type from name if available
+                        try:
+                            device_name = getattr(self.client, 'name', '') or ''
+                            self.device_type = self._detect_device_type(device_name)
+                            _LOGGER.debug(f"Detected device type: {self.device_type}")
+                        except Exception as e:
+                            _LOGGER.debug(f"Could not detect device name: {e}")
+                        
+                        # Discover characteristics
+                        try:
+                            await self._discover_characteristics(self.client)
+                        except Exception as e:
+                            _LOGGER.warning(f"Characteristic discovery failed, but connection succeeded: {e}")
+                        
+                        return True
+                    
+                except Exception as e:
+                    _LOGGER.warning(f"Connection attempt {attempt + 1} failed: {e}")
+                    if self.client:
+                        try:
+                            await self.client.disconnect()
+                        except:
+                            pass
+                        self.client = None
+                    
+                    # Don't wait after the last attempt
+                    if attempt < config['max_retries'] - 1:
+                        wait_time = 2 ** attempt  # Exponential backoff
+                        _LOGGER.debug(f"Waiting {wait_time}s before next attempt...")
+                        await asyncio.sleep(wait_time)
+            
+            _LOGGER.error(f"Failed to connect to {self.address} after {config['max_retries']} attempts")
+            return False
+
+
+
+    async def read_data(self) -> Optional[Dict[str, Any]]:
+        """Read power data from the device with multiple fallback strategies"""
+        if not self.is_connected or not self.client:
+            raise Exception("Not connected to device")
+        
+        try:
+            characteristics = await self._discover_characteristics(self.client)
+            
+            # Strategy 1: Try known RX characteristics
+            for char_info in characteristics['rx_chars']:
+                try:
+                    _LOGGER.debug(f"Trying to read from RX characteristic: {char_info['uuid']}")
+                    data = await self.client.read_gatt_char(char_info['uuid'])
+                    if data:
+                        return self._parse_power_data(data)
+                except Exception as e:
+                    _LOGGER.debug(f"Failed to read from {char_info['uuid']}: {e}")
+                    continue
+            
+            # Strategy 2: Try all readable characteristics
+            for char_info in characteristics['readable_chars']:
+                try:
+                    _LOGGER.debug(f"Trying to read from readable characteristic: {char_info['uuid']}")
+                    data = await self.client.read_gatt_char(char_info['uuid'])
+                    if data and len(data) > 4:  # Reasonable data length
+                        parsed = self._parse_power_data(data)
+                        if parsed:  # Valid data
+                            return parsed
+                except Exception as e:
+                    _LOGGER.debug(f"Failed to read from {char_info['uuid']}: {e}")
+                    continue
+            
+            # Strategy 3: Send command and read response (if we have TX characteristics)
+            if characteristics['tx_chars']:
+                try:
+                    tx_char = characteristics['tx_chars'][0]
+                    _LOGGER.debug(f"Sending read command to TX characteristic: {tx_char['uuid']}")
+                    
+                    # Send a common read command
+                    read_command = b'\x01\x03\x00\x00\x00\x01\x84\x0A'  # Common Modbus-like read command
+                    await self.client.write_gatt_char(tx_char['uuid'], read_command)
+                    
+                    # Wait for response
+                    await asyncio.sleep(0.5)
+                    
+                    # Try to read response from RX characteristics
+                    for char_info in characteristics['rx_chars'] or characteristics['readable_chars']:
+                        try:
+                            data = await self.client.read_gatt_char(char_info['uuid'])
+                            if data:
+                                return self._parse_power_data(data)
+                        except Exception as e:
+                            _LOGGER.debug(f"Failed to read response from {char_info['uuid']}: {e}")
+                            continue
+                            
+                except Exception as e:
+                    _LOGGER.debug(f"Command/response strategy failed: {e}")
+            
+            raise Exception("No readable characteristics found or all read attempts failed")
+            
+        except Exception as e:
+            _LOGGER.error(f"Failed to read data from {self.address}: {e}")
+            raise
+
+    def _parse_power_data(self, data: bytes) -> Optional[Dict[str, Any]]:
+        """Parse power data from raw bytes with multiple format support"""
+        if not data or len(data) < 4:
+            return None
+        
+        try:
+            _LOGGER.debug(f"Parsing data: {data.hex()}")
+            
+            # Strategy 1: Try common BluPow format (little-endian)
+            if len(data) >= 8:
+                try:
+                    voltage = int.from_bytes(data[0:2], byteorder='little') / 100.0
+                    current = int.from_bytes(data[2:4], byteorder='little') / 1000.0
+                    power = int.from_bytes(data[4:6], byteorder='little') / 100.0
+                    energy = int.from_bytes(data[6:8], byteorder='little') / 1000.0
+                    
+                    # Sanity check
+                    if 0 < voltage < 500 and 0 <= current < 100 and 0 <= power < 10000:
+                        return {
+                            'voltage': voltage,
+                            'current': current,
+                            'power': power,
+                            'energy': energy
+                        }
+                except Exception as e:
+                    _LOGGER.debug(f"Little-endian parsing failed: {e}")
+            
+            # Strategy 2: Try big-endian format
+            if len(data) >= 8:
+                try:
+                    voltage = int.from_bytes(data[0:2], byteorder='big') / 100.0
+                    current = int.from_bytes(data[2:4], byteorder='big') / 1000.0
+                    power = int.from_bytes(data[4:6], byteorder='big') / 100.0
+                    energy = int.from_bytes(data[6:8], byteorder='big') / 1000.0
+                    
+                    # Sanity check
+                    if 0 < voltage < 500 and 0 <= current < 100 and 0 <= power < 10000:
+                        return {
+                            'voltage': voltage,
+                            'current': current,
+                            'power': power,
+                            'energy': energy
+                        }
+                except Exception as e:
+                    _LOGGER.debug(f"Big-endian parsing failed: {e}")
+            
+            # Strategy 3: Try to parse as ASCII/text
+            try:
+                text_data = data.decode('utf-8').strip()
+                if ',' in text_data or ';' in text_data:
+                    # CSV-like format
+                    values = text_data.replace(';', ',').split(',')
+                    if len(values) >= 4:
+                        return {
+                            'voltage': float(values[0]),
+                            'current': float(values[1]),
+                            'power': float(values[2]),
+                            'energy': float(values[3])
+                        }
+            except Exception as e:
+                _LOGGER.debug(f"ASCII parsing failed: {e}")
+            
+            _LOGGER.warning(f"Could not parse data format: {data.hex()}")
+            return None
+            
+        except Exception as e:
+            _LOGGER.error(f"Data parsing error: {e}")
+            return None
+
+    @staticmethod
+    async def scan_devices(timeout: float = 10.0) -> List[Tuple[str, str]]:
+        """Scan for BluPow devices with environment-aware settings"""
+        _LOGGER.info("Scanning for BluPow devices...")
+        
+        env = EnvironmentInfo()
+        
+        # Adjust scan parameters based on environment
+        scan_timeout = timeout
+        if env.is_docker:
+            scan_timeout += 5  # Docker might need more time
+        if env.platform == "Windows":
+            scan_timeout += 3  # Windows BLE can be slower
+        
+        try:
+            devices = await BleakScanner.discover(timeout=scan_timeout)
+            blupow_devices = []
+            
+            for device in devices:
+                name = device.name or ""
+                if any(keyword in name.lower() for keyword in ['blupow', 'power', 'meter', 'esp32']):
+                    blupow_devices.append((device.address, name))
+                    _LOGGER.info(f"Found potential BluPow device: {name} ({device.address})")
+            
+            _LOGGER.info(f"Scan completed. Found {len(blupow_devices)} potential devices.")
+            return blupow_devices
+            
+        except Exception as e:
+            _LOGGER.error(f"Device scan failed: {e}")
+            return []
 
