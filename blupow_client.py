@@ -93,15 +93,23 @@ class BluPowClient:
         # Renogy protocol constants
         self._device_id = 255  # Broadcast address for standalone devices
         
-        # Charging status mapping (fixed missing map)
+        # INVERTER-SPECIFIC: Register sections for RIV1230RCH-SPS
+        self.sections = [
+            {'register': 4000, 'words': 10, 'parser': self.parse_inverter_stats},
+            {'register': 4109, 'words': 1, 'parser': self.parse_device_id},
+            {'register': 4311, 'words': 8, 'parser': self.parse_inverter_model},
+            {'register': 4327, 'words': 7, 'parser': self.parse_charging_info},
+            {'register': 4408, 'words': 6, 'parser': self.parse_load_info}
+        ]
+        
+        # Charging status mapping (inverter-specific)
         self._charging_status_map = {
-            0: "Not charging",
-            1: "Float", 
-            2: "Boost",
-            3: "Equalization",
-            4: "MPPT",
-            5: "Absorption",
-            6: "Bulk"
+            0: 'deactivated',
+            1: 'constant current',
+            2: 'constant voltage',
+            4: 'floating',
+            6: 'battery activation',
+            7: 'battery disconnecting'
         }
 
     def _calculate_crc(self, data: bytes) -> int:
@@ -198,48 +206,121 @@ class BluPowClient:
                 parsed_data['connection_status'] = 'connected'
                 parsed_data['last_update'] = datetime.now().isoformat()
                 
-                self._logger.info(f"✅ Parsed {len(parsed_data)} data points successfully")
-            else:
-                self._logger.warning(f"Unexpected payload length: {len(payload)}")
-                
-        except Exception as e:
-            self._logger.error(f"Error parsing response data: {e}")
-            return {}
+            self._logger.info(f"Parsed data: {parsed_data}")
+            return parsed_data
             
-        return parsed_data
+        except Exception as e:
+            self._logger.error(f"Error parsing Renogy response: {e}")
+            return {}
+
+    # INVERTER-SPECIFIC PARSING METHODS
+    def parse_inverter_stats(self, payload: bytes) -> Dict[str, Any]:
+        """Parse inverter statistics (register 4000, 10 words)"""
+        data = {}
+        if len(payload) >= 20:  # 10 words = 20 bytes
+            data['input_voltage'] = struct.unpack('>H', payload[2:4])[0] / 10.0
+            data['input_current'] = struct.unpack('>H', payload[4:6])[0] / 100.0
+            data['output_voltage'] = struct.unpack('>H', payload[6:8])[0] / 10.0
+            data['output_current'] = struct.unpack('>H', payload[8:10])[0] / 100.0
+            data['output_frequency'] = struct.unpack('>H', payload[10:12])[0] / 100.0
+            data['battery_voltage'] = struct.unpack('>H', payload[12:14])[0] / 10.0
+            data['temperature'] = struct.unpack('>H', payload[14:16])[0] / 10.0
+            data['input_frequency'] = struct.unpack('>H', payload[18:20])[0] / 100.0
+        return data
+
+    def parse_device_id(self, payload: bytes) -> Dict[str, Any]:
+        """Parse device ID (register 4109, 1 word)"""
+        data = {}
+        if len(payload) >= 4:
+            data['device_id'] = struct.unpack('>H', payload[2:4])[0]
+        return data
+
+    def parse_inverter_model(self, payload: bytes) -> Dict[str, Any]:
+        """Parse inverter model (register 4311, 8 words)"""
+        data = {}
+        if len(payload) >= 19:
+            model_bytes = payload[3:19]
+            data['model'] = model_bytes.decode('utf-8').rstrip('\x00')
+        return data
+
+    def parse_charging_info(self, payload: bytes) -> Dict[str, Any]:
+        """Parse charging information (register 4327, 7 words)"""
+        data = {}
+        if len(payload) >= 16:  # 7 words + headers
+            data['battery_percentage'] = struct.unpack('>H', payload[2:4])[0]
+            data['charging_current'] = struct.unpack('>h', payload[4:6])[0] / 10.0  # signed
+            data['solar_voltage'] = struct.unpack('>H', payload[6:8])[0] / 10.0
+            data['solar_current'] = struct.unpack('>H', payload[8:10])[0] / 10.0
+            data['solar_power'] = struct.unpack('>H', payload[10:12])[0]
+            charging_status_code = struct.unpack('>H', payload[12:14])[0]
+            data['charging_status'] = self._charging_status_map.get(charging_status_code, 'unknown')
+            data['charging_power'] = struct.unpack('>H', payload[14:16])[0]
+        return data
+
+    def parse_load_info(self, payload: bytes) -> Dict[str, Any]:
+        """Parse load information (register 4408, 6 words)"""
+        data = {}
+        if len(payload) >= 14:  # 6 words + headers
+            data['load_current'] = struct.unpack('>H', payload[2:4])[0] / 10.0
+            data['load_active_power'] = struct.unpack('>H', payload[4:6])[0]
+            data['load_apparent_power'] = struct.unpack('>H', payload[6:8])[0]
+            data['line_charging_current'] = struct.unpack('>H', payload[10:12])[0] / 10.0
+            data['load_percentage'] = struct.unpack('>H', payload[12:14])[0]
+        return data
 
     async def read_device_info(self) -> Dict[str, Any]:
-        """Read device information using proper Renogy protocol"""
+        """Read all inverter data using multiple register sections"""
         if not self._client or not self._client.is_connected:
             self._logger.error("Device not connected")
             return {}
             
+        self._logger.info("📋 Reading inverter data from all register sections...")
+        combined_data = {}
+        
         try:
-            # Clear previous response
-            self._response_data.clear()
-            self._response_received = False
-            
-            # Create device info command (read registers 0x0100-0x0106, 7 registers)
-            command = self._create_read_command(0x0100, 7)
-            self._logger.debug(f"📤 Sending device info command: {command.hex()}")
-            
-            # Send command
-            await self._client.write_gatt_char(self._tx_char_uuid, command)
-            
-            # Wait for response
-            timeout_start = asyncio.get_event_loop().time()
-            while not self._response_received and (asyncio.get_event_loop().time() - timeout_start) < self._response_timeout:
-                await asyncio.sleep(0.1)
+            for section in self.sections:
+                register = section['register']
+                words = section['words']
+                parser = section['parser']
                 
-            if not self._response_received:
-                self._logger.warning("⏰ Timeout waiting for device info response")
-                return {}
+                self._logger.info(f"📤 Reading register {register}, {words} words")
                 
-            # Parse response
-            return self._parse_renogy_response(bytes(self._response_data))
+                # Clear previous response
+                self._response_data.clear()
+                self._response_received = False
+                
+                # Create command for this register section
+                command = self._create_read_command(register, words)
+                self._logger.debug(f"Command: {command.hex()}")
+                
+                # Send command
+                await self._client.write_gatt_char(self._tx_char_uuid, command)
+                
+                # Wait for response
+                timeout_start = asyncio.get_event_loop().time()
+                while not self._response_received and (asyncio.get_event_loop().time() - timeout_start) < 2.0:
+                    await asyncio.sleep(0.1)
+                
+                if self._response_received and len(self._response_data) > 0:
+                    # Parse this section's data
+                    section_data = parser(bytes(self._response_data))
+                    combined_data.update(section_data)
+                    self._logger.info(f"✅ Section {register}: {len(section_data)} fields")
+                else:
+                    self._logger.warning(f"❌ No response from register {register}")
+                
+                # Small delay between register reads
+                await asyncio.sleep(0.5)
+            
+            # Add metadata
+            combined_data['connection_status'] = 'connected'
+            combined_data['last_update'] = datetime.now().isoformat()
+            
+            self._logger.info(f"🎉 Total inverter data collected: {len(combined_data)} fields")
+            return combined_data
             
         except Exception as e:
-            self._logger.error(f"Error reading device info: {e}")
+            self._logger.error(f"Error reading inverter data: {e}")
             return {}
 
     async def read_realtime_data(self) -> Dict[str, Any]:

@@ -98,12 +98,12 @@ tests/diagnostics/blupow_testing_suite.py
 ## 🔧 Supported Devices
 
 ### Currently Supported
-- **Renogy RNG-CTRL-RVR40** (Rover 40A Charge Controller)
-- **BTRIC134000035** (Bluetooth module)
+- **Renogy RIV1230RCH-SPS** (REGO 3000w Inverter Charger)
+- **BTRIC134000035** (Bluetooth module attached to inverter)
 
 ### Future Support (Planned)
-- Additional Renogy charge controllers
-- Renogy inverters and battery monitors  
+- Renogy charge controllers (Rover, Wanderer, Adventurer series)
+- Additional Renogy inverters and battery monitors  
 - Shelly power monitoring devices
 - Victron Energy devices
 - Tesla Powerwall integration
