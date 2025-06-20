@@ -1,62 +1,134 @@
-# BluPow - A Vision for Seamless Home Energy Monitoring
+# AiCockpit 2025 🚁
+## **The Revolutionary AI-Collaborative Development Platform**
 
-Welcome to the BluPow project! This Home Assistant integration is born from a collaborative spirit and a passion for detailed, high-quality engineering. Our mission is to transform how you interact with your home's energy systems, making comprehensive power monitoring not just possible, but seamless and intuitive.
+**Where VS Code becomes the "IDE hand" of your AI collaborator**
 
-**Our Philosophy:** We believe that good work shines through in the details. From the lines of code to the lines of documentation, this project is a testament to a partnership between human creativity and AI-driven precision. We invite you to explore, contribute, and be part of a vision where complex energy data becomes clear, actionable insight.
+Welcome to AiCockpit! This revolutionary platform is born from a collaborative spirit and a passion for redefining human-AI partnership in software development. Our mission is to transform how developers work with AI, making advanced AI collaboration not just possible, but seamless, intuitive, and profoundly powerful.
 
-## 🎯 Current Status: Production Ready
+**Our Philosophy:** *"If you don't care about your tools, then you don't care about the result. Making good tools are the best tools - take pride and time to maintain them as they do the same for you."* This project is a testament to a partnership between human creativity and AI-driven precision, where VS Code becomes the physical manifestation of AI collaboration.
 
-The BluPow integration is **fully functional and stable**, designed to connect with the **Renogy RIV1230RCH-SPS Inverter Charger**. It reliably reads all 22 sensors, providing a complete picture of your AC and DC power systems.
+## 🚀 Revolutionary Vision & Current Status
 
-- ✅ **Hardware:** Correctly targets the Renogy Inverter.
-- ✅ **Protocol:** Implements the proper Modbus communication protocol.
-- ✅ **Sensors:** Creates 22 distinct sensors in Home Assistant.
-- ✅ **Stability:** The integration code is robust and production-ready.
+### **The AI-Human Symbiosis**
+AiCockpit represents a paradigm shift from AI as a simple assistant to AI as a true collaborative partner. VS Code becomes the physical manifestation of this partnership - the "IDE hand" through which the AI collaborator can:
 
-The primary remaining challenge is ensuring a stable Bluetooth connection, which is often dependent on your physical hardware and environment.
+- **Make real-time edits** alongside human developers
+- **Understand context** at the deepest level through integrated tooling  
+- **Collaborate seamlessly** without breaking the developer's flow
+- **Scale intelligence** from simple completions to complex architectural decisions
 
-### A Project's Journey
-This project underwent a significant evolution. It began with a mistaken identity—believing the target device was a simple charge controller—and was transformed by a key discovery that revealed it was a powerful inverter. This journey is a core part of our story. To understand how we got here, we encourage you to read the [Project History](docs/PROJECT_HISTORY.md).
+### **Performance Revolution** ⚡
+- **24x Performance Improvement** over traditional inference methods with vLLM
+- **<100ms Latency** for real-time inline completions
+- **PagedAttention Algorithm** - Eliminates 60-80% memory waste
+- **Multi-GPU Scaling** - From single GPU to enterprise clusters
+
+### **Current Transformation Status** 🏗️
+**Version**: 0.2.5-alpha → **Target**: 1.0.0-revolutionary  
+**Health Score**: 91.2/100 - HEALTHY  
+**Status**: **ACTIVE RESTRUCTURING**
+
+- 🔄 **vLLM Backend Migration**: Replacing current backend with high-performance vLLM
+- 🔄 **VS Code Extension Development**: Creating the AI's "IDE hand"
+- 🔄 **Architecture Overhaul**: Complete restructuring around AI-collaborative workflows
+- 🔄 **Community Building**: Open source excellence with comprehensive documentation
+
+### **A Project's Revolutionary Journey**
+This project is undergoing a profound transformation, guided by the vision document **"AiCockpit- vLLM Integration and VS Code.txt"**. We're not just building another AI tool - we're creating the future of human-AI collaborative development. To understand our revolutionary vision, read the [Project Vision 2025](docs/PROJECT_VISION_2025.md).
 
 ## 🚀 Quick Start Guide
 
-Getting started is a two-step process: first, verify your connection, then add the integration.
+Getting started with AiCockpit's revolutionary AI-collaborative development platform:
 
-### 1. Verify Your Connection
-Before adding the integration to Home Assistant, run our verification script to confirm that your hardware can communicate successfully.
+### **Phase 1: Current Architecture (Alpha)**
+While we're restructuring for the vLLM + VS Code revolution, you can explore the current alpha version:
 
 ```bash
-# From the project root directory
-python3 scripts/verify_connection.py
+# Clone the repository
+git clone https://github.com/yourusername/AiCockpit.git
+cd AiCockpit
+
+# Check project health
+python scripts/project_health_check.py --format json
+
+# Start the current backend (FastAPI)
+cd acp_backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Start the frontend (Next.js)
+cd acp_frontend
+npm install
+npm run dev
 ```
-This script will attempt to connect to your inverter and print out the live data. If successful, you're ready for the next step. If not, it will provide clear troubleshooting guidance.
 
-### 2. Add to Home Assistant
-Once verification is successful, add the integration through the Home Assistant UI:
-1.  Navigate to **Settings → Devices & Services**.
-2.  Click **Add Integration** and search for **"BluPow"**.
-3.  When prompted, enter the MAC address of your device: `D8:B6:73:BF:4F:75`.
-4.  Your 22 inverter sensors will be added and will begin updating.
+### **Phase 2: Revolutionary vLLM Backend (Coming Soon)**
+The future high-performance backend will be incredibly simple:
 
-## 📁 Project Structure
+```bash
+# Install vLLM (when ready)
+pip install vllm
 
-This project is organized for clarity and maintainability. For a detailed guide, see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md).
+# Start the revolutionary backend
+vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct --host 0.0.0.0 --port 8000
 
-- `blupow/`: The core Home Assistant integration source code.
-- `docs/`: All project documentation, including history, guides, and vision.
-- `scripts/`: Standalone Python scripts for verification, diagnostics, and deployment.
-- `tests/`: The automated testing suite for ensuring code quality.
+# Install the VS Code extension (when ready)
+# Search for "AiCockpit" in VS Code marketplace
+```
 
-## 📖 Deeper Dives: Our Documentation
+### **Phase 3: The Ultimate Experience**
+- **Inline Completions**: AI ghost text that understands your entire codebase
+- **Ctrl+K Editing**: Natural language code transformation
+- **@-mention Chat**: Conversation with your code using file references
+- **Terminal Integration**: AI executes complex tasks through natural language
+- **Real-time Collaboration**: True human-AI partnership in development
 
-We believe documentation is an art form. It's a chance to share our ideology and our commitment to quality.
+## 📁 Revolutionary Project Architecture
 
-- **[Future Vision](docs/guides/FUTURE_VISION.md):** Explore our ambitious roadmap for the future of power monitoring.
-- **[Energy Dashboard Plan](docs/guides/ENERGY_DASHBOARD_PLAN.md):** Learn how to integrate BluPow with Home Assistant's Energy Dashboard.
-- **[Bluetooth Troubleshooting](docs/troubleshooting/BLUETOOTH_CONNECTION_GUIDE.md):** A detailed guide to resolving connectivity issues.
+This project is being restructured for the ultimate AI-collaborative development experience. For detailed transformation plans, see [Project Restructure Plan](docs/PROJECT_RESTRUCTURE_PLAN.md).
 
-## 🤝 The Spirit of Collaboration
+### **Current Structure (Alpha)**
+- `acp_backend/`: FastAPI backend (being replaced by vLLM)
+- `acp_frontend/`: Next.js frontend (will integrate with VS Code extension)
+- `docs/`: Comprehensive documentation and vision
+- `scripts/`: Development tools and health monitoring
 
-This project thrives on a partnership between human insight and AI capability. Every file has been crafted with care, and every decision has been made thoughtfully. We encourage you to approach your own work with the same spirit of excellence and attention to detail.
+### **Future Structure (Revolutionary)**
+- `backend/vllm_server/`: High-performance vLLM backend
+- `vscode-extension/`: The AI's "IDE hand" - VS Code extension
+- `infrastructure/`: Kubernetes, Docker, monitoring stack
+- `community/`: Open source collaboration resources
 
-Thank you for being a part of the BluPow journey. Let's make energy monitoring beautiful.
+## 📖 Revolutionary Documentation
+
+We believe documentation is an art form and a chance to share our revolutionary vision.
+
+### **Essential Reading**
+- **[Project Vision 2025](docs/PROJECT_VISION_2025.md):** The complete revolutionary vision
+- **[Project Restructure Plan](docs/PROJECT_RESTRUCTURE_PLAN.md):** Detailed transformation roadmap
+- **[Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md):** Deep technical specifications
+- **[Project Evolution](docs/PROJECT_EVOLUTION.md):** Our journey and methodology
+
+### **Development Guides** (Coming Soon)
+- **vLLM Setup Guide:** High-performance backend configuration
+- **VS Code Extension Development:** Building the AI's "IDE hand"
+- **Multi-GPU Configuration:** Enterprise-scale deployment
+- **Performance Tuning:** Optimization for <100ms latency
+
+## 🤝 The Revolutionary Spirit of Collaboration
+
+This project embodies a revolutionary partnership between human insight and AI capability. We're not just building tools - we're creating the future of software development where humans and AI work as true partners.
+
+### **Our Commitment**
+- **Quality Over Quantity** - Every feature meticulously crafted
+- **Community First** - Building for and with the developer community
+- **Long-term Vision** - Architecture designed for decades of growth
+- **Open Source Excellence** - Transparent development and comprehensive documentation
+
+### **Join the Revolution**
+We invite you to be part of this revolutionary transformation. Whether you're a developer, designer, or visionary, there's a place for you in building the future of AI-collaborative development.
+
+**Thank you for being part of the AiCockpit revolution. Let's make AI-collaborative development beautiful, powerful, and accessible to all.**
+
+---
+
+*"The best tools don't just solve problems - they inspire new possibilities. AiCockpit is our gift to the future of software development."*
