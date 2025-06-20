@@ -1,0 +1,69 @@
+{
+  "validation_summary": {
+    "overall_success": false,
+    "total_test_categories": 9,
+    "passed_categories": 1,
+    "failed_categories": 8,
+    "success_rate": 11.1,
+    "validation_duration": 0.02
+  },
+  "detailed_results": {
+    "Component Import Validation": {
+      "success": false,
+      "details": {
+        "blupow_client.BluPowClient": true,
+        "coordinator.BluPowDataUpdateCoordinator": false,
+        "sensor.BluPowSensor": false,
+        "const.DEVICE_SENSORS": false
+      },
+      "summary": "1/4 imports successful"
+    },
+    "Configuration Validation": {
+      "success": true,
+      "details": {
+        "manifest_complete": true,
+        "has_bluetooth_dependency": true,
+        "has_bleak_requirement": true,
+        "all_files_present": true
+      }
+    },
+    "Client Functionality Test": {
+      "success": false,
+      "error": "'BluPowClient' object has no attribute 'parse_inverter_stats'"
+    },
+    "Coordinator Structure Test": {
+      "success": false,
+      "error": "cannot import name 'bluetooth' from 'MockModule' (unknown location)"
+    },
+    "Sensor Definitions Test": {
+      "success": false,
+      "error": "cannot import name 'UnitOfEnergy' from 'MockModule' (unknown location)"
+    },
+    "Error Handling Test": {
+      "success": false,
+      "error": "'BluPowClient' object has no attribute 'parse_inverter_stats'"
+    },
+    "Health Monitoring Test": {
+      "success": false,
+      "error": "cannot import name 'bluetooth' from 'MockModule' (unknown location)"
+    },
+    "Data Processing Test": {
+      "success": false,
+      "error": "'BluPowClient' object has no attribute 'parse_inverter_stats'"
+    },
+    "Integration Simulation": {
+      "success": false,
+      "error": "cannot import name 'bluetooth' from 'MockModule' (unknown location)"
+    }
+  },
+  "timestamp": "2025-06-20T15:49:37.281431",
+  "integration_status": "NEEDS_ATTENTION",
+  "recommendations": [
+    "\ud83d\udd27 Fix component import issues",
+    "\ud83d\udce1 Fix BluPow client functionality",
+    "\ud83d\udd04 Fix coordinator and health monitoring",
+    "\ud83d\udcca Fix sensor definitions and units",
+    "\ud83d\udee1\ufe0f Improve error handling and recovery",
+    "\ud83d\udcc8 Fix health monitoring system"
+  ]
+}

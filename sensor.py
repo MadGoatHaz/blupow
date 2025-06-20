@@ -51,10 +51,60 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
 
     @property
     def native_value(self) -> Any:
-        """Return the state of the sensor."""
-        if self.coordinator.data:
-            return self.coordinator.data.get(self.entity_description.key)
-        return None
+        """Return the state of the sensor with proper null handling."""
+        if not self.coordinator.data:
+            return None
+            
+        value = self.coordinator.data.get(self.entity_description.key)
+        
+        # Handle various null/invalid value cases
+        if value is None:
+            return None
+        
+        # Handle string representations of null values
+        if isinstance(value, str):
+            if value.lower() in ['none', 'null', 'unknown', 'unavailable', '']:
+                return None
+            
+            # Try to convert string numbers to appropriate type
+            try:
+                # For numeric sensors, try to convert to float first
+                if self.entity_description.key in [
+                    'input_voltage', 'output_voltage', 'battery_voltage', 'solar_voltage',
+                    'input_current', 'output_current', 'charging_current', 'solar_current', 'load_current',
+                    'load_active_power', 'charging_power', 'solar_power',
+                    'battery_percentage', 'load_percentage',
+                    'temperature', 'input_frequency', 'output_frequency'
+                ]:
+                    float_value = float(value)
+                    # Return None for obviously invalid readings
+                    if float_value < 0 and self.entity_description.key.endswith('_percentage'):
+                        return None
+                    if float_value > 1000 and self.entity_description.key.endswith('_voltage'):
+                        return None  # Extremely high voltage, likely invalid
+                    return float_value
+            except (ValueError, TypeError):
+                # If conversion fails, return the original string value
+                pass
+        
+        # For numeric values, validate ranges
+        if isinstance(value, (int, float)):
+            # Validate percentage values
+            if self.entity_description.key.endswith('_percentage'):
+                if not (0 <= value <= 100):
+                    return None
+            
+            # Validate voltage readings (reasonable ranges)
+            if 'voltage' in self.entity_description.key:
+                if value < 0 or value > 1000:  # 0-1000V seems reasonable
+                    return None
+            
+            # Validate current readings
+            if 'current' in self.entity_description.key:
+                if value < 0 or value > 1000:  # 0-1000A seems reasonable
+                    return None
+        
+        return value
 
     @property
     def available(self) -> bool:
