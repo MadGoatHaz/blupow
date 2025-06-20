@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 import functools
 import subprocess
 import json
+import time
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -30,6 +31,9 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             hass, mac_address.upper(), connectable=True
         ) if mac_address else None
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="BluPow-BT")
+        self._last_successful_data = {}
+        self._consecutive_failures = 0
+        self._last_success_time = None
 
         super().__init__(
             hass,
@@ -48,47 +52,115 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             # Use subprocess to run connection in completely isolated environment
             _LOGGER.info("Running connection in isolated subprocess...")
             
+            # Calculate dynamic timeout based on recent performance
+            base_timeout = 25.0
+            if self._consecutive_failures > 2:
+                timeout = min(base_timeout + (self._consecutive_failures * 5), 45.0)
+            else:
+                timeout = base_timeout
+            
             # Create a standalone script that mimics our successful manual tests
             script = f'''
 import asyncio
 import sys
+import logging
+import signal
+import time
+
+# Configure minimal logging to reduce noise
+logging.basicConfig(level=logging.ERROR)
+
+# Add path for our custom component
 sys.path.append("/config/custom_components")
 
-async def get_data():
-    from blupow.blupow_client import BluPowClient
-    
-    client = BluPowClient("{self.mac_address}")
-    try:
-        connected = await client.connect()
-        if connected:
-            data = await client.read_device_info()
-            await client.disconnect()
-            
-            if data and len(data) > 0:
-                # Convert to JSON-serializable format
-                json_data = {{}}
-                for k, v in data.items():
-                    if v is not None:
-                        json_data[k] = str(v) if not isinstance(v, (int, float, bool, str)) else v
-                    else:
-                        json_data[k] = None
-                
-                print("SUCCESS:" + str(json_data))
-                return True
-            else:
-                print("ERROR:No data retrieved")
-                return False
-        else:
-            print("ERROR:Connection failed")
-            return False
-    except Exception as e:
-        print(f"ERROR:{{str(e)}}")
-        return False
+# Timeout handler
+def timeout_handler(signum, frame):
+    print("ERROR:Script timeout")
+    sys.exit(1)
 
-asyncio.run(get_data())
+signal.signal(signal.SIGALRM, timeout_handler)
+signal.alarm(40)  # Hard timeout
+
+async def get_data():
+    """Get data with proper connection management."""
+    client = None
+    try:
+        from blupow.blupow_client import BluPowClient
+        
+        client = BluPowClient("{self.mac_address}")
+        
+        # Connection attempt with retries
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    print(f"RETRY:Attempt {{attempt + 1}}")
+                    await asyncio.sleep(2.0)  # Brief delay between retries
+                
+                connected = await client.connect()
+                if connected:
+                    break
+                else:
+                    if attempt == max_retries - 1:
+                        print("ERROR:All connection attempts failed")
+                        return False
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    print(f"ERROR:Connection exception: {{str(e)}}")
+                    return False
+        
+        # Read data
+        data = await client.read_device_info()
+        
+        # CRITICAL FIX: Properly await disconnect
+        try:
+            if client.is_connected:
+                await client.disconnect()
+        except Exception as e:
+            print(f"WARNING:Disconnect error: {{str(e)}}")
+        
+        # Validate and return data
+        if data and len(data) > 0:
+            # Convert to JSON-serializable format
+            json_data = {{}}
+            for k, v in data.items():
+                if v is not None:
+                    json_data[k] = str(v) if not isinstance(v, (int, float, bool, str)) else v
+                else:
+                    json_data[k] = None
+            
+            print("SUCCESS:" + str(json_data))
+            return True
+        else:
+            print("ERROR:No data retrieved")
+            return False
+            
+    except Exception as e:
+        print(f"ERROR:Script exception: {{str(e)}}")
+        return False
+    finally:
+        # Cleanup: Ensure disconnect is called
+        if client:
+            try:
+                if hasattr(client, 'is_connected') and client.is_connected:
+                    await client.disconnect()
+            except Exception:
+                pass  # Ignore cleanup errors
+        
+        signal.alarm(0)  # Cancel timeout
+
+# Run with proper exception handling
+try:
+    result = asyncio.run(get_data())
+    if not result:
+        sys.exit(1)
+except Exception as e:
+    print(f"ERROR:Runtime exception: {{str(e)}}")
+    sys.exit(1)
 '''
             
-            # Run the script in subprocess with timeout
+            # Run the script in subprocess with dynamic timeout
+            start_time = time.time()
             process = await asyncio.create_subprocess_exec(
                 'python3', '-c', script,
                 stdout=asyncio.subprocess.PIPE,
@@ -96,15 +168,26 @@ asyncio.run(get_data())
             )
             
             try:
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=20.0)
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+                execution_time = time.time() - start_time
                 
                 output = stdout.decode().strip()
+                stderr_output = stderr.decode().strip()
+                
+                if stderr_output:
+                    _LOGGER.debug(f"Subprocess stderr: {stderr_output}")
+                
                 if output.startswith("SUCCESS:"):
                     # Parse the returned data
                     data_str = output[8:]  # Remove "SUCCESS:" prefix
                     data = eval(data_str)  # Safe since we control the format
                     
-                    _LOGGER.info(f"✅ SUBPROCESS SUCCESS: Retrieved {len(data)} fields")
+                    # Success metrics
+                    self._consecutive_failures = 0
+                    self._last_success_time = time.time()
+                    self._last_successful_data = data.copy()
+                    
+                    _LOGGER.info(f"✅ SUBPROCESS SUCCESS: Retrieved {len(data)} fields in {execution_time:.1f}s")
                     
                     # Log key values to prove it's working
                     key_values = {k: v for k, v in data.items() 
@@ -116,22 +199,61 @@ asyncio.run(get_data())
                     data['connection_status'] = 'connected'
                     
                     return data
+                    
+                elif output.startswith("RETRY:"):
+                    _LOGGER.info(f"Subprocess retry: {output}")
+                    return self._get_fallback_data()
+                    
                 else:
-                    error_msg = output if output.startswith("ERROR:") else "Unknown error"
+                    # Handle various error types
+                    if output.startswith("ERROR:"):
+                        error_msg = output[6:]  # Remove "ERROR:" prefix
+                    else:
+                        error_msg = "Unknown subprocess error"
+                    
                     _LOGGER.error(f"Subprocess failed: {error_msg}")
                     
-                    if stderr:
-                        _LOGGER.error(f"Subprocess stderr: {stderr.decode()}")
-                    
-                    return self.client.get_data()
+                    self._consecutive_failures += 1
+                    return self._get_fallback_data()
                     
             except asyncio.TimeoutError:
-                _LOGGER.error("Subprocess timed out after 20 seconds")
-                process.kill()
-                return self.client.get_data()
+                _LOGGER.error(f"Subprocess timed out after {timeout:.1f} seconds")
+                self._consecutive_failures += 1
+                
+                # Kill the process
+                if process.returncode is None:
+                    process.kill()
+                    try:
+                        await asyncio.wait_for(process.wait(), timeout=5.0)
+                    except asyncio.TimeoutError:
+                        process.terminate()
+                
+                return self._get_fallback_data()
                 
         except Exception as exc:
             _LOGGER.error(f"Error running subprocess: {exc}")
+            self._consecutive_failures += 1
+            return self._get_fallback_data()
+        finally:
+            # Ensure process cleanup
+            if 'process' in locals() and process.returncode is None:
+                try:
+                    process.terminate()
+                    await asyncio.wait_for(process.wait(), timeout=2.0)
+                except:
+                    pass
+
+    def _get_fallback_data(self) -> Dict[str, Any]:
+        """Get fallback data when subprocess fails."""
+        if self._last_successful_data and time.time() - (self._last_success_time or 0) < 300:
+            # Use last successful data if it's less than 5 minutes old
+            _LOGGER.info("Using cached data as fallback")
+            fallback_data = self._last_successful_data.copy()
+            fallback_data['connection_status'] = 'offline'
+            return fallback_data
+        else:
+            # Return offline structure
+            _LOGGER.warning("No recent successful data, returning offline structure")
             return self.client.get_data()
 
     @property

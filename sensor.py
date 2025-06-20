@@ -64,11 +64,27 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
         
         connection_status = self.coordinator.data.get('connection_status')
         
-        # Available if connected or in test mode
+        # Available if:
+        # 1. Connected and last update successful
+        # 2. Using cached data (offline) but last update was successful
+        # 3. In test mode
         is_available = (
             self.coordinator.last_update_success and 
-            connection_status in ['connected', 'test_mode']
+            connection_status in ['connected', 'test_mode', 'offline']
         )
+        
+        # Only mark unavailable if explicitly disconnected AND no recent success
+        if connection_status == 'disconnected':
+            # Check if we have recent successful data (within last 10 minutes)
+            last_update = self.coordinator.data.get('last_update')
+            if last_update:
+                try:
+                    from datetime import datetime, timedelta
+                    last_time = datetime.fromisoformat(last_update.replace('Z', '+00:00'))
+                    if datetime.now() - last_time < timedelta(minutes=10):
+                        is_available = True
+                except:
+                    pass  # If parsing fails, use default logic
         
         # Debug logging for sensor availability
         if not is_available:
