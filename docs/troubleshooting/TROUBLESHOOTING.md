@@ -173,6 +173,46 @@ ps aux | grep blue
 
 ---
 
+## Problem 3: Config Flow Could Not Be Loaded
+
+If you see this error in the Home Assistant UI when trying to add the BluPow integration, it means there's a problem with the integration's setup files.
+
+```
+Config flow could not be loaded: {"message":"Invalid handler specified"}
+```
+
+This error is typically caused by one of two issues:
+
+### Solution 1: Deploy the Latest Code
+
+The most common cause is that the files in your Home Assistant `custom_components/blupow` directory are outdated. This can happen if you've pulled new changes from the repository but haven't copied them over to Home Assistant.
+
+**Action:** Run the deployment script again to ensure Home Assistant is using the latest version of the integration.
+
+```bash
+# Deploy to Home Assistant
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
+```
+
+Then, **restart Home Assistant** to apply the changes.
+
+### Solution 2: Check for Syntax Errors
+
+If deploying doesn't fix it, there might be a syntax error in one of the Python files, most likely `config_flow.py`.
+
+The specific error `NameError: name 'callback' is not defined` was recently fixed. This was caused by a missing import in `config_flow.py`.
+
+**Action:**
+1.  Ensure you have the latest code from the repository.
+2.  Manually inspect `config_flow.py` to ensure the following import is present at the top of the file:
+    ```python
+    from homeassistant.core import HomeAssistant, callback
+    ```
+3.  If you make any changes, re-run the deployment script and restart Home Assistant.
+
+---
+
 ## Diagnostic Methodology (For Developers)
 
 ### How We Diagnosed the Container Issue

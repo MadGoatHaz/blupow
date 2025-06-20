@@ -20,13 +20,27 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
+import os
 
 # Import our testing systems
 try:
-    from custom_components.blupow.device_discovery_system import BluPowDeviceDiscoverySystem
-    from custom_components.blupow.device_wake_system import DeviceWakeSystem, TARGET_DEVICE
-    from custom_components.blupow.blupow_client import BluPowClient
-    from custom_components.blupow.const import RENOGY_SERVICE_UUID, RENOGY_TX_CHAR_UUID, RENOGY_RX_CHAR_UUID
+    # When running from deployed location
+    import sys
+    import os
+    
+    # Add the current directory to path so we can import sibling modules
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, current_dir)
+    
+    from device_discovery_system import BluPowDeviceDiscoverySystem
+    from device_wake_system import DeviceWakeSystem, TARGET_DEVICE
+    
+    # Add the parent directory to import the main blupow modules
+    parent_dir = os.path.dirname(os.path.dirname(current_dir))
+    sys.path.insert(0, parent_dir)
+    
+    from blupow_client import BluPowClient
+    from const import RENOGY_SERVICE_UUID, RENOGY_TX_CHAR_UUID, RENOGY_RX_CHAR_UUID
 except ImportError as e:
     print(f"Error importing BluPow modules: {e}")
     print("Please ensure you're running from the BluPow directory")
