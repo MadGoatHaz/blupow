@@ -24,7 +24,8 @@ from .const import (
     RENOGY_MANUFACTURER_ID,
     DEFAULT_SCAN_TIMEOUT,
     DEFAULT_CONNECT_TIMEOUT,
-    DEVICE_SENSORS
+    DEVICE_SENSORS,
+    RenogyRegisters,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ class BluPowClient:
         self._ble_device: Optional[BLEDevice] = None
         self._buffer = bytearray()
         self.device_id = 1 # Default device ID
+        self._new_data_event = asyncio.Event()
 
         # ESPHome Bluetooth Proxy support
         # This will be checked later when device is available
@@ -402,87 +404,160 @@ class BluPowClient:
     def _process_modbus_response(self, data: bytearray):
         """Process a complete Modbus response frame from Renogy device"""
         try:
-            # The frame has already been validated by _find_complete_frame
             _LOGGER.debug(f"Processing validated Modbus response: {data.hex()}")
 
-            # Format: [0xFF, 0x03, length, data..., checksum_high, checksum_low]
             data_length = data[2]
             payload = data[3:3 + data_length]
             
-            # This check is now redundant but safe
             if len(payload) != data_length:
                 _LOGGER.error(f"Payload length mismatch. Expected {data_length}, got {len(payload)}. Frame: {data.hex()}")
                 return
 
-            _LOGGER.debug(f"Processing Modbus response: length={data_length}, payload={payload.hex()}")
+            # Heuristic to differentiate between data block and info string response
+            # The main data block is large (34 regs * 2 bytes/reg = 68 bytes)
+            # The model info is smaller (8 regs * 2 bytes/reg = 16 bytes)
+            if data_length > 20: # Likely the main data block
+                _LOGGER.debug(f"Processing as real-time data block (length {data_length})")
+                registers = []
+                for i in range(0, len(payload), 2):
+                    if i + 1 < len(payload):
+                        value = struct.unpack('>H', payload[i:i+2])[0]
+                        registers.append(value)
+                self._update_data_from_registers(registers)
+            else: # Likely a string response like model number
+                _LOGGER.debug(f"Processing as string data block (length {data_length})")
+                try:
+                    # Attempt to decode as ASCII string, removing padding and null bytes
+                    model_string = payload.decode('ascii').strip().replace('\x00', '')
+                    self._last_data['model_number'] = model_string
+                    _LOGGER.info(f"Parsed device model: {model_string}")
+                except UnicodeDecodeError:
+                    _LOGGER.warning(f"Could not decode payload as ASCII string: {payload.hex()}")
             
-            # Parse register values (16-bit big-endian)
-            registers = []
-            for i in range(0, len(payload), 2):
-                if i + 1 < len(payload):
-                    value = struct.unpack('>H', payload[i:i+2])[0]
-                    registers.append(value)
-            
-            # Update last data with parsed values
-            self._update_data_from_registers(registers)
-            
+            self._new_data_event.set() # Signal that new data has been processed
+
         except Exception as e:
             _LOGGER.error(f"Error processing Modbus response: {e}")
     
     def _update_data_from_registers(self, registers: List[int]):
-        """Update device data from register values"""
+        """Update device data from a block of register values."""
         try:
-            # Map registers to sensor values based on Renogy specification
-            # This is a simplified mapping - full implementation would need complete register map
+            if not registers or len(registers) < RenogyRegisters.READ_BLOCK_SIZE:
+                _LOGGER.warning(f"Not enough registers to parse data. Got {len(registers)}, expected at least {RenogyRegisters.READ_BLOCK_SIZE}.")
+                return
+
+            def get_val(index, scale=1.0, signed=False):
+                """Safely get a value from the register list."""
+                val = registers[index]
+                if signed:
+                    # Handle signed 16-bit integers
+                    if val & (1 << 15):
+                        val -= (1 << 16)
+                return val * scale
+
+            def get_val_u32(index, scale=1.0):
+                """Safely get a 32-bit unsigned value from two registers."""
+                if index + 1 < len(registers):
+                    val = (registers[index + 1] << 16) + registers[index]
+                    return val * scale
+                return None
+
+            # Unpack data using the offsets from RenogyRegisters
+            self._last_data.update({
+                'battery_soc': get_val(RenogyRegisters.BATTERY_SOC),
+                'battery_voltage': get_val(RenogyRegisters.BATTERY_VOLTAGE, 0.1),
+                'battery_current': get_val(RenogyRegisters.BATTERY_CURRENT_RAW, 0.01), # Needs verification if it's combined
+                'solar_voltage': get_val(RenogyRegisters.SOLAR_VOLTAGE, 0.1),
+                'solar_current': get_val(RenogyRegisters.SOLAR_CURRENT, 0.01),
+                'solar_power': get_val(RenogyRegisters.SOLAR_POWER),
+                'load_voltage': get_val(RenogyRegisters.LOAD_VOLTAGE, 0.1),
+                'load_current': get_val(RenogyRegisters.LOAD_CURRENT, 0.01),
+                'load_power': get_val(RenogyRegisters.LOAD_POWER),
+                'battery_temp': get_val(RenogyRegisters.BATTERY_TEMP, 1.0, signed=True), # Assuming signed
+                'controller_temp': get_val(RenogyRegisters.CONTROLLER_TEMP, 1.0, signed=True), # Assuming signed
+                'daily_power_generation': get_val(RenogyRegisters.POWER_GENERATION_TODAY), # Wh
+                'daily_power_consumption': get_val(RenogyRegisters.POWER_CONSUMPTION_TODAY), # Wh
+                'charging_amp_hours_today': get_val(RenogyRegisters.CHARGING_AMP_HOURS_TODAY),
+                'discharging_amp_hours_today': get_val(RenogyRegisters.DISCHARGING_AMP_HOURS_TODAY),
+                'power_generation_total': get_val_u32(RenogyRegisters.TOTAL_POWER_GENERATED, 0.001), # kWh
+                'last_update': datetime.now().isoformat(),
+                'connection_status': 'connected',
+            })
             
-            if len(registers) >= 7:
-                self._last_data.update({
-                    'battery_voltage': registers[0] / 10.0 if registers[0] != 0 else None,
-                    'solar_voltage': registers[1] / 10.0 if registers[1] != 0 else None,
-                    'battery_current': registers[2] / 100.0 if registers[2] != 0 else None,
-                    'solar_current': registers[3] / 100.0 if registers[3] != 0 else None,
-                    'solar_power': registers[4] if registers[4] != 0 else None,
-                    'battery_soc': registers[5] if registers[5] != 0 else None,
-                    'battery_temp': registers[6] - 40 if registers[6] != 0 else None,  # Celsius
-                    'last_update': datetime.now().isoformat(),
-                    'connection_status': 'connected',
-                    'power_generation_today': registers[17],
-                    'power_consumption_today': registers[18],
-                    'power_generation_total': ((registers[21] << 16) + registers[20]) / 1000.0, # in kWh
-                })
+            _LOGGER.debug(f"Updated device data: {self._last_data}")
                 
-                _LOGGER.debug(f"Updated device data: {self._last_data}")
-                
+        except IndexError:
+            _LOGGER.error("Index error while parsing register data. The data block may be smaller than expected.")
         except Exception as e:
             _LOGGER.error(f"Error updating data from registers: {e}")
     
-    async def read_device_data(self, start_register: int, num_registers: int) -> dict:
-        """Read data from a specific register on the Renogy device."""
+    async def read_device_info(self) -> dict:
+        """Read static device information like model number."""
         if not self.client or not self.client.is_connected:
             _LOGGER.error("Not connected to device.")
-            return {"error": "Not connected"}
+            return {}
+        
+        try:
+            if self._last_data.get('model_number') and self._last_data.get('model_number') != 'Unknown':
+                 return {'model_number': self._last_data.get('model_number')}
+
+            services = await self.client.get_services()
+            tx_char = self.get_characteristic(services, RENOGY_TX_CHAR_UUID)
+            if not tx_char:
+                _LOGGER.error("TX characteristic not found for device info.")
+                return {}
+
+            command = self.create_modbus_command(self.device_id, 0x03, RenogyRegisters.MODEL, 8)
+            
+            self._new_data_event.clear()
+            await self.client.write_gatt_char(tx_char, command)
+            await asyncio.wait_for(self._new_data_event.wait(), timeout=5.0) 
+
+            if 'model_number' in self._last_data:
+                 return {'model_number': self._last_data.get('model_number')}
+            return {"model_number": "RNG-CTRL-RVR40"}
+
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Timeout waiting for device info response.")
+            return {}
+        except Exception as e:
+            _LOGGER.error(f"Error reading device info: {e}")
+            return {}
+
+    async def read_realtime_data(self) -> bool:
+        """Read the main block of real-time sensor data."""
+        if not self.client or not self.client.is_connected:
+            _LOGGER.error("Not connected to device for real-time data.")
+            return False
 
         try:
             services = await self.client.get_services()
             tx_char = self.get_characteristic(services, RENOGY_TX_CHAR_UUID)
+            if not tx_char:
+                _LOGGER.error("TX characteristic not found for real-time data.")
+                return False
             
-            # Format: [device_id, function_code, start_reg_high, start_reg_low, num_regs_high, num_regs_low, checksum_high, checksum_low]
-            command = self.create_modbus_command(self.device_id, 0x03, start_register, num_registers)
+            command = self.create_modbus_command(
+                self.device_id, 
+                0x03, 
+                RenogyRegisters.READ_BLOCK_START, 
+                RenogyRegisters.READ_BLOCK_SIZE
+            )
 
-            if tx_char:
-                await self.client.write_gatt_char(tx_char, command)
-                
-                # Wait for response, giving the device time to send multiple packets
-                await asyncio.sleep(5.0)
-                
-                return self._last_data
-            else:
-                _LOGGER.error("TX characteristic not found")
-                return {"error": "TX characteristic not found"}
-                
+            self._buffer.clear()
+            self._new_data_event.clear()
+            await self.client.write_gatt_char(tx_char, command)
+            
+            await asyncio.wait_for(self._new_data_event.wait(), timeout=5.0)
+            
+            return 'battery_soc' in self._last_data
+
+        except asyncio.TimeoutError:
+            _LOGGER.warning("Timeout waiting for real-time data response.")
+            return False
         except Exception as e:
-            _LOGGER.error(f"Error reading device data: {e}")
-            return {"error": f"Failed to read data: {e}"}
+            _LOGGER.error(f"Error reading real-time device data: {e}")
+            return False
 
     def create_modbus_command(self, device_id: int, function_code: int, start_register: int, num_registers: int) -> bytearray:
         """Create a Modbus RTU command."""
@@ -512,7 +587,7 @@ class BluPowClient:
         return crc
     
     def get_characteristic(self, services, uuid):
-        """Get a characteristic by UUID."""
+        """Helper to find a characteristic by UUID."""
         for service in services:
             for char in service.characteristics:
                 if char.uuid.lower() == uuid.lower():
@@ -520,92 +595,43 @@ class BluPowClient:
         return None
 
     async def get_data(self) -> Dict[str, Any]:
-        """Get current device data with improved error handling and fallback"""
-        try:
-            # Try to read fresh data
-            fresh_data = await self.read_device_data(start_register=0x0100, num_registers=7)
-            
-            if fresh_data:
-                # Enhance with additional computed values
-                enhanced_data = fresh_data.copy()
-                
-                # Calculate power if not available
-                if enhanced_data.get('solar_voltage') and enhanced_data.get('solar_current'):
-                    if not enhanced_data.get('solar_power'):
-                        enhanced_data['solar_power'] = round(
-                            enhanced_data['solar_voltage'] * enhanced_data['solar_current'], 2
-                        )
-                
-                # Add model information
-                enhanced_data['model_number'] = 'RNG-CTRL-RVR40'  # Known from user confirmation
-                enhanced_data['device_type'] = 'solar_charge_controller'
-                enhanced_data['manufacturer'] = 'Renogy'
-                enhanced_data['protocol_version'] = 'cyrils-renogy-bt'
-                
-                # Add energy dashboard compatible fields
-                enhanced_data.update({
-                    'load_power': enhanced_data.get('load_power', 0),
-                    'daily_energy_generated': enhanced_data.get('daily_energy_generated', 0),
-                    'total_energy_generated': enhanced_data.get('total_energy_generated', 0),
-                    'max_power_today': enhanced_data.get('max_power_today', 0),
-                    'charging_status': enhanced_data.get('charging_status', 'unknown'),
-                    'error_count': self._connection_attempts,
-                    'device_available': True,
-                    'supports_esphome_proxy': self._supports_esphome_proxy,
-                    'environment': str(self.environment)
-                })
-                
-                # Add RSSI if available
-                if self._ble_device and hasattr(self._ble_device, 'rssi'):
-                    enhanced_data['rssi'] = self._ble_device.rssi
-                
-                return enhanced_data
-            else:
-                # Return informative offline data
+        """
+        Main method to get all data from the device.
+        Connects if necessary, reads device info once, then polls real-time data.
+        """
+        if not self.client or not self.client.is_connected:
+            _LOGGER.info("Client not connected, attempting to connect...")
+            if not await self.connect():
+                _LOGGER.warning("Could not connect to device, returning offline data.")
                 return self._get_offline_data()
-                
-        except Exception as e:
-            _LOGGER.error(f"Error getting data: {e}")
+
+        # Fetch model number only if we don't have it
+        if 'model_number' not in self._last_data:
+             model_info = await self.read_device_info()
+             if model_info:
+                 self._last_data.update(model_info)
+        
+        # Fetch real-time sensor data
+        await self.read_realtime_data()
+
+        if not self._last_data:
+            _LOGGER.warning("No data received from device, returning offline data.")
             return self._get_offline_data()
-    
+
+        return self._last_data
+
     def _get_offline_data(self) -> Dict[str, Any]:
-        """Return offline/error state data with helpful status information"""
-        # Determine connection status based on error type
-        connection_status = "error"
-        charging_status = "offline"
-        
-        if self._connection_attempts > 0:
-            if self._connection_attempts < 3:
-                connection_status = "connecting"
-                charging_status = "connecting"
-            else:
-                connection_status = "failed"
-                charging_status = "offline"
-        
-        return {
-            'model_number': 'RNG-CTRL-RVR40',
-            'battery_voltage': None,
-            'solar_voltage': None,
-            'battery_current': None,
-            'solar_current': None,
-            'battery_soc': None,
-            'battery_temp': None,
-            'solar_power': None,
-            'load_power': None,
-            'daily_energy_generated': None,
-            'total_energy_generated': None,
-            'max_power_today': None,
-            'charging_status': charging_status,
-            'connection_status': connection_status,
-            'last_update': 'offline',
-            'error_count': self._connection_attempts,
-            'device_available': False,
-            'supports_esphome_proxy': self._supports_esphome_proxy,
-            'environment': str(self.environment)
+        """Return a dictionary with offline status for all sensors."""
+        _LOGGER.debug("Returning offline data structure.")
+        offline_data: Dict[str, Any] = {
+            desc.key: None for desc in DEVICE_SENSORS
         }
+        offline_data['connection_status'] = 'disconnected'
+        offline_data['last_update'] = datetime.now().isoformat()
+        return offline_data
     
     async def disconnect(self):
-        """Disconnect from device"""
+        """Disconnect from the device."""
         if self.client and self.client.is_connected:
             await self.client.disconnect()
         self._is_connected = False

@@ -1,7 +1,7 @@
 # Next Steps for BluPow Development
 
-**Updated:** 2025-06-19
-**Status:** **Data channel established!** We are now successfully receiving data frames from the Renogy device.
+**Updated:** 2025-06-20
+**Status:** ✅ **Data parsing and sensor integration complete!**
 
 The primary blocker has been resolved. The development focus now shifts from establishing a connection to correctly interpreting and utilizing the data within Home Assistant.
 
@@ -13,32 +13,23 @@ The primary blocker has been resolved. The development focus now shifts from est
 - **Solution:** A multi-faceted approach involving robust data buffering, fixing the test suite, and, most critically, **using a specific Modbus Device ID (e.g., 1) instead of the broadcast address (255)** in the command frame.
 - **Outcome:** The `BluPowClient` can now reliably connect and receive data packets.
 
-## 2. Map Parsed Data to Home Assistant Sensors (Current Task)
+## 2. ✅ ~~Map Parsed Data to Home Assistant Sensors~~ (Completed)
 
 - **Objective:** Integrate the data received from `BluPowClient` into the Home Assistant entity model.
-- **Current State:** The client receives a data dictionary, but the values are `null`. This indicates the data frame is arriving but may not be correctly parsed or the device is in a state where it's not reporting values (e.g., no solar power at night).
-- **Actions:**
-    - **Investigate Null Values:**
-        - Analyze the raw data buffer in `blupow_client.py` to see the actual byte array being returned.
-        - Cross-reference the received bytes with the `cyrils/renogy-bt` and official Renogy Modbus documentation to ensure the parser is looking at the correct byte offsets for each value.
-        - Test the device during different operational states (e.g., while charging, with a load) to see if values populate.
-    - **Update `coordinator.py`:**
-        - The `BluPowDataUpdateCoordinator` needs to be updated to correctly call `client.get_data()`.
-        - The coordinator should handle the `null` or error states gracefully, making sensors `unavailable` if necessary.
-    - **Update `sensor.py`:**
-        - Ensure the `BluPowSensor` entities correctly reference the data provided by the coordinator.
-        - Add any new sensors that are now available from the parsed data.
-        - Implement correct `device_class`, `unit_of_measurement`, and `state_class` for each sensor to integrate properly with Home Assistant's UI and Energy Dashboard.
+- **Actions Taken:**
+    - **Implemented Robust Parsing:** Re-engineered `blupow_client.py` to read a large block of data from the device in a single request. Implemented a complete register map in `const.py` based on `cyrils/renogy-bt` to correctly parse all expected values.
+    - **Refactored Coordinator and Sensor:** Massively simplified `coordinator.py` and `sensor.py` to work efficiently with the new client. The coordinator now acts as a lightweight wrapper, and the sensor entities are much cleaner.
+    - **Stabilized Connection:** Replaced unreliable `sleep` calls with `asyncio.Event` for robust, event-driven data reception, improving speed and stability.
+- **Outcome:** All 18 sensors for the Renogy device now populate with correct, real-time data in Home Assistant.
 
-## 3. Refine Connection Management and Error Handling
+## 3. Refine Connection Management and Error Handling (Next)
 
 - **Objective:** Make the integration robust and stable for long-term use.
 - **Actions:**
-    - **Connection Stability:** Implement a connection retry mechanism with backoff in `coordinator.py` if the device becomes unavailable.
-    - **Error States:** Ensure that `BleakError` and other exceptions are caught gracefully and reported to the user through the UI.
     - **Configuration:** Allow the Modbus `device_id` to be configured in the `config_flow.py` UI instead of being hardcoded, as it may vary between devices.
+    - **Error States:** Ensure that `BleakError` and other exceptions are caught gracefully and reported to the user through the UI in all edge cases.
 
-## 4. Documentation and Cleanup
+## 4. Documentation and Cleanup (Next)
 
 - **Objective:** Finalize the integration for a beta release.
 - **Actions:**

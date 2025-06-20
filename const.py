@@ -40,17 +40,57 @@ RENOGY_MANUFACTURER_ID: Final = 0x7DE0  # Renogy manufacturer ID
 DEFAULT_SCAN_TIMEOUT: Final = 10.0
 DEFAULT_CONNECT_TIMEOUT: Final = 20.0
 
-# Register Addresses (for devices that support Modbus)
-REG_DEVICE_MODEL = 0x000A
-REG_SOFTWARE_VERSION = 0x000C
-REG_HARDWARE_VERSION = 0x000E
-REG_BATTERY_VOLTAGE = 0x0101
-REG_BATTERY_CURRENT = 0x0102
-REG_BATTERY_SOC = 0x0100
-REG_BATTERY_TEMP = 0x0103
-REG_SOLAR_VOLTAGE = 0x0107
-REG_SOLAR_CURRENT = 0x0108
-REG_SOLAR_POWER = 0x0109
+# --- Renogy Modbus Register Definitions ---
+# Based on reverse-engineering of cyrils/renogy-bt and official documentation.
+
+class RenogyRegisters:
+    """Register addresses for Renogy devices."""
+    
+    # --- Device Information (Read in a separate, initial query) ---
+    MODEL = 0x000A
+    SOFTWARE_VERSION = 0x000C
+    HARDWARE_VERSION = 0x000E
+    
+    # --- Real-time Data Block (Read in a single query) ---
+    READ_BLOCK_START = 0x0100
+    READ_BLOCK_SIZE = 34 # Number of registers to read from the start address
+    
+    # --- Register Offsets from READ_BLOCK_START (0x0100) ---
+    # These are indices into the list of registers returned by the block read
+    BATTERY_SOC = 0
+    BATTERY_VOLTAGE = 1
+    BATTERY_CURRENT_RAW = 2  # Combined with next register
+    SOLAR_VOLTAGE = 3
+    SOLAR_CURRENT = 4
+    SOLAR_POWER = 5
+    LOAD_VOLTAGE = 6
+    LOAD_CURRENT = 7
+    LOAD_POWER = 8
+    CONTROLLER_TEMP = 9
+    BATTERY_TEMP = 10
+    
+    # Daily Statistics (relative to 0x0100)
+    BATTERY_MIN_VOLTAGE_TODAY = 11
+    BATTERY_MAX_VOLTAGE_TODAY = 12
+    CHARGER_MAX_CURRENT_TODAY = 13
+    DISCHARGER_MAX_CURRENT_TODAY = 14
+    CHARGER_MAX_POWER_TODAY = 15
+    DISCHARGER_MAX_POWER_TODAY = 16
+    CHARGING_AMP_HOURS_TODAY = 17
+    DISCHARGING_AMP_HOURS_TODAY = 18
+    POWER_GENERATION_TODAY = 19
+    POWER_CONSUMPTION_TODAY = 20
+    
+    # Historical Data (relative to 0x0100)
+    TOTAL_OPERATING_DAYS = 21
+    TOTAL_BATTERY_OVER_DISCHARGES = 22
+    TOTAL_BATTERY_FULL_CHARGES = 23
+    TOTAL_CHARGING_AMP_HOURS = 24 # 2 registers
+    TOTAL_POWER_GENERATED = 26 # 2 registers
+    
+    # Status and Settings (relative to 0x0100)
+    CHARGING_STATUS = 28
+
 
 # Sensor Descriptions - REAL RENOGY DATA OPTIMIZED FOR ENERGY DASHBOARD
 DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
