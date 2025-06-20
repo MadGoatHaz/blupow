@@ -304,6 +304,21 @@ setup_solution_2_capabilities() {
     print_info "Removing old container..."
     docker rm "$CONTAINER_NAME"
     
+    # Build device arguments only for devices that exist
+    DEVICE_ARGS=""
+    if [[ -e /dev/ttyUSB0 ]]; then
+        DEVICE_ARGS="$DEVICE_ARGS --device=/dev/ttyUSB0"
+        print_info "Added USB device: /dev/ttyUSB0"
+    fi
+    if [[ -e /dev/ttyACM0 ]]; then
+        DEVICE_ARGS="$DEVICE_ARGS --device=/dev/ttyACM0"
+        print_info "Added ACM device: /dev/ttyACM0"
+    fi
+    if [[ -d /dev/bus/usb ]]; then
+        DEVICE_ARGS="$DEVICE_ARGS -v /dev/bus/usb:/dev/bus/usb"
+        print_info "Added USB bus access"
+    fi
+    
     # Create new container with specific capabilities
     print_info "Creating container with Bluetooth capabilities..."
     docker run -d \
@@ -312,9 +327,7 @@ setup_solution_2_capabilities() {
         -e TZ="$TIMEZONE" \
         -v "$CONFIG_PATH":/config \
         -v /run/dbus:/run/dbus:ro \
-        -v /dev/bus/usb:/dev/bus/usb \
-        --device=/dev/ttyUSB0 \
-        --device=/dev/ttyACM0 \
+        $DEVICE_ARGS \
         --cap-add=NET_ADMIN \
         --cap-add=NET_RAW \
         --cap-add=SYS_ADMIN \
@@ -342,6 +355,15 @@ setup_solution_3_apparmor() {
     print_info "Removing old container..."
     docker rm "$CONTAINER_NAME"
     
+    # Build device arguments only for devices that exist
+    DEVICE_ARGS=""
+    if [[ -e /dev/ttyUSB0 ]]; then
+        DEVICE_ARGS="$DEVICE_ARGS --device=/dev/ttyUSB0"
+    fi
+    if [[ -e /dev/ttyACM0 ]]; then
+        DEVICE_ARGS="$DEVICE_ARGS --device=/dev/ttyACM0"
+    fi
+    
     # Create new container with custom AppArmor profile
     print_info "Creating container with custom AppArmor profile..."
     docker run -d \
@@ -350,8 +372,7 @@ setup_solution_3_apparmor() {
         -e TZ="$TIMEZONE" \
         -v "$CONFIG_PATH":/config \
         -v /run/dbus:/run/dbus:ro \
-        --device=/dev/ttyUSB0 \
-        --device=/dev/ttyACM0 \
+        $DEVICE_ARGS \
         --cap-add=NET_ADMIN \
         --cap-add=NET_RAW \
         --security-opt apparmor=docker.homeassistant.bluetooth \
@@ -384,6 +405,15 @@ setup_solution_4_disable_apparmor() {
     print_info "Removing old container..."
     docker rm "$CONTAINER_NAME"
     
+    # Build device arguments only for devices that exist
+    DEVICE_ARGS=""
+    if [[ -e /dev/ttyUSB0 ]]; then
+        DEVICE_ARGS="$DEVICE_ARGS --device=/dev/ttyUSB0"
+    fi
+    if [[ -e /dev/ttyACM0 ]]; then
+        DEVICE_ARGS="$DEVICE_ARGS --device=/dev/ttyACM0"
+    fi
+    
     # Create new container with AppArmor disabled
     print_info "Creating container with AppArmor disabled..."
     docker run -d \
@@ -392,8 +422,7 @@ setup_solution_4_disable_apparmor() {
         -e TZ="$TIMEZONE" \
         -v "$CONFIG_PATH":/config \
         -v /run/dbus:/run/dbus:ro \
-        --device=/dev/ttyUSB0 \
-        --device=/dev/ttyACM0 \
+        $DEVICE_ARGS \
         --cap-add=NET_ADMIN \
         --cap-add=NET_RAW \
         --security-opt apparmor=unconfined \
@@ -424,7 +453,8 @@ async def test_scan():
         devices = await BleakScanner.discover(timeout=10.0)
         print(f"Found {len(devices)} Bluetooth devices:")
         for device in devices[:5]:  # Show first 5 devices
-            print(f"  - {device.address}: {device.name or \"Unknown\"}")
+            name = device.name or "Unknown"
+            print(f"  - {device.address}: {name}")
         return len(devices) > 0
     except Exception as e:
         print(f"Bluetooth scan failed: {e}")
