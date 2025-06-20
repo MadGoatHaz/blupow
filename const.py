@@ -10,20 +10,13 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    ELECTRIC_CURRENT_AMPERE,
-    ELECTRIC_POTENTIAL_VOLT,
-    ENERGY_KILO_WATT_HOUR,
     PERCENTAGE,
-    POWER_WATT,
-    TEMPERATURE_CELSIUS,
-    TIME_DAYS,
-    FREQUENCY_HERTZ,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
-    UnitOfEnergy,
     UnitOfPower,
     UnitOfTemperature,
     UnitOfTime,
+    UnitOfFrequency,
 )
 
 DOMAIN: Final = "blupow"

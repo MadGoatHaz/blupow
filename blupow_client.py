@@ -2,6 +2,7 @@
 BluPow BLE Client for Home Assistant Integration - Enhanced Renogy Protocol
 
 Based on cyrils/renogy-bt: Direct connection without pairing, enhanced device discovery
+Enhanced with comprehensive error handling, logging, and self-monitoring
 """
 
 import asyncio
@@ -9,8 +10,10 @@ import logging
 import platform
 import sys
 import struct
+import time
+import traceback
 from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, timedelta
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakDeviceNotFoundError, BleakError
 from bleak.backends.device import BLEDevice
@@ -27,16 +30,103 @@ try:
         DEFAULT_CONNECT_TIMEOUT,
     )
 except ImportError:
-    from const import (
-        RENOGY_SERVICE_UUID,
-        RENOGY_TX_CHAR_UUID,
-        RENOGY_RX_CHAR_UUID,
-        RENOGY_MANUFACTURER_ID,
-        DEFAULT_SCAN_TIMEOUT,
-        DEFAULT_CONNECT_TIMEOUT,
-    )
+    # Fallback for standalone testing
+    RENOGY_SERVICE_UUID = "0000ffd0-0000-1000-8000-00805f9b34fb"
+    RENOGY_TX_CHAR_UUID = "0000ffd1-0000-1000-8000-00805f9b34fb"
+    RENOGY_RX_CHAR_UUID = "0000fff1-0000-1000-8000-00805f9b34fb"
+    RENOGY_MANUFACTURER_ID = 0x7DE0
+    DEFAULT_SCAN_TIMEOUT = 10.0
+    DEFAULT_CONNECT_TIMEOUT = 20.0
 
 _LOGGER = logging.getLogger(__name__)
+
+class ConnectionHealth:
+    """Track connection health and performance metrics"""
+    
+    def __init__(self):
+        self.total_attempts = 0
+        self.successful_connections = 0
+        self.failed_connections = 0
+        self.consecutive_failures = 0
+        self.last_success_time = None
+        self.last_failure_time = None
+        self.average_connection_time = 0.0
+        self.connection_times = []
+        self.error_history = []
+        self.data_retrieval_success = 0
+        self.data_retrieval_failures = 0
+        
+    def record_connection_attempt(self, success: bool, duration: float = 0.0, error: str = None):
+        """Record connection attempt results"""
+        self.total_attempts += 1
+        
+        if success:
+            self.successful_connections += 1
+            self.consecutive_failures = 0
+            self.last_success_time = time.time()
+            if duration > 0:
+                self.connection_times.append(duration)
+                # Keep only last 50 connection times
+                if len(self.connection_times) > 50:
+                    self.connection_times.pop(0)
+                self.average_connection_time = sum(self.connection_times) / len(self.connection_times)
+        else:
+            self.failed_connections += 1
+            self.consecutive_failures += 1
+            self.last_failure_time = time.time()
+            if error:
+                self.error_history.append({
+                    'timestamp': time.time(),
+                    'error': error,
+                    'consecutive_failures': self.consecutive_failures
+                })
+                # Keep only last 20 errors
+                if len(self.error_history) > 20:
+                    self.error_history.pop(0)
+    
+    def record_data_retrieval(self, success: bool):
+        """Record data retrieval success/failure"""
+        if success:
+            self.data_retrieval_success += 1
+        else:
+            self.data_retrieval_failures += 1
+    
+    @property
+    def success_rate(self) -> float:
+        """Calculate overall success rate"""
+        if self.total_attempts == 0:
+            return 0.0
+        return (self.successful_connections / self.total_attempts) * 100
+    
+    @property
+    def data_success_rate(self) -> float:
+        """Calculate data retrieval success rate"""
+        total_data_attempts = self.data_retrieval_success + self.data_retrieval_failures
+        if total_data_attempts == 0:
+            return 0.0
+        return (self.data_retrieval_success / total_data_attempts) * 100
+    
+    @property
+    def is_healthy(self) -> bool:
+        """Determine if connection is considered healthy"""
+        if self.total_attempts < 3:
+            return True  # Not enough data yet
+        
+        # Healthy if success rate > 50% and consecutive failures < 5
+        return self.success_rate > 50.0 and self.consecutive_failures < 5
+    
+    def get_health_report(self) -> Dict[str, Any]:
+        """Get comprehensive health report"""
+        return {
+            'total_attempts': self.total_attempts,
+            'success_rate': round(self.success_rate, 1),
+            'consecutive_failures': self.consecutive_failures,
+            'average_connection_time': round(self.average_connection_time, 2),
+            'data_success_rate': round(self.data_success_rate, 1),
+            'is_healthy': self.is_healthy,
+            'last_success_age': time.time() - self.last_success_time if self.last_success_time else None,
+            'recent_errors': self.error_history[-3:] if self.error_history else []
+        }
 
 class EnvironmentInfo:
     """Detect Home Assistant environment details"""
@@ -79,7 +169,7 @@ class EnvironmentInfo:
         return f"Platform: {self.platform}, Python: {self.python_version[:2]}, Docker: {self.is_docker}, HassIO: {self.is_hassio}, BLE: {self.ble_backend}"
 
 class BluPowClient:
-    """Enhanced BluPow client with proper Renogy protocol implementation"""
+    """Enhanced BluPow client with comprehensive error handling and monitoring"""
     
     def __init__(self, mac_address: str):
         self.mac_address = mac_address
@@ -89,15 +179,22 @@ class BluPowClient:
         self._connected = False
         self._logger = logging.getLogger(__name__)
         
+        # Enhanced monitoring and health tracking
+        self.health = ConnectionHealth()
+        self.environment = EnvironmentInfo()
+        self._last_health_log = 0
+        self._health_log_interval = 300  # Log health every 5 minutes
+        
         # BLE Service and Characteristic UUIDs (from Renogy BT-2 protocol)
         self._service_uuid = "0000ffd0-0000-1000-8000-00805f9b34fb"
         self._tx_char_uuid = "0000ffd1-0000-1000-8000-00805f9b34fb"  # Write to device
         self._rx_char_uuid = "0000fff1-0000-1000-8000-00805f9b34fb"  # Notifications from device
         
-        # Response handling
+        # Response handling with enhanced error tracking
         self._response_data = bytearray()
         self._response_received = False
         self._response_timeout = 3.0
+        self._operation_start_time = None
         
         # Renogy protocol constants
         self._device_id = 255  # Broadcast address for standalone devices
@@ -120,6 +217,73 @@ class BluPowClient:
             6: 'battery activation',
             7: 'battery disconnecting'
         }
+        
+        # Enhanced logging
+        self._log_connection_health_if_needed()
+
+    def _log_connection_health_if_needed(self):
+        """Log connection health periodically"""
+        current_time = time.time()
+        if current_time - self._last_health_log >= self._health_log_interval:
+            health_report = self.health.get_health_report()
+            
+            if self.health.total_attempts > 0:
+                status = "🟢 HEALTHY" if self.health.is_healthy else "🔴 UNHEALTHY"
+                self._logger.info(
+                    f"📊 BluPow Health Report [{status}]: "
+                    f"Success Rate: {health_report['success_rate']}%, "
+                    f"Consecutive Failures: {health_report['consecutive_failures']}, "
+                    f"Avg Connection Time: {health_report['average_connection_time']}s, "
+                    f"Data Success: {health_report['data_success_rate']}%"
+                )
+                
+                # Log recent errors if any
+                if health_report['recent_errors']:
+                    for error in health_report['recent_errors']:
+                        self._logger.warning(f"Recent Error: {error['error']}")
+            
+            self._last_health_log = current_time
+
+    def _safe_operation(self, operation_name: str):
+        """Decorator-like context manager for safe operations with comprehensive error handling"""
+        return SafeOperationContext(self, operation_name)
+
+class SafeOperationContext:
+    """Context manager for safe operations with error handling and logging"""
+    
+    def __init__(self, client: BluPowClient, operation_name: str):
+        self.client = client
+        self.operation_name = operation_name
+        self.start_time = None
+        self.success = False
+        
+    def __enter__(self):
+        self.start_time = time.time()
+        self.client._logger.debug(f"🔄 Starting {self.operation_name}")
+        return self
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        duration = time.time() - self.start_time
+        
+        if exc_type is None:
+            self.success = True
+            self.client._logger.debug(f"✅ {self.operation_name} completed successfully in {duration:.2f}s")
+        else:
+            self.success = False
+            error_msg = f"{exc_type.__name__}: {exc_val}"
+            self.client._logger.error(f"❌ {self.operation_name} failed after {duration:.2f}s: {error_msg}")
+            
+            # Record error for health tracking
+            if hasattr(self.client, 'health'):
+                if 'connection' in self.operation_name.lower():
+                    self.client.health.record_connection_attempt(False, duration, error_msg)
+                elif 'data' in self.operation_name.lower():
+                    self.client.health.record_data_retrieval(False)
+        
+        # Log health periodically
+        self.client._log_connection_health_if_needed()
+        
+        return False  # Don't suppress exceptions
 
     def _calculate_crc(self, data: bytes) -> int:
         """Calculate Modbus CRC16 for command validation"""
@@ -415,7 +579,11 @@ class BluPowClient:
         try:
             from .const import DEVICE_SENSORS
         except ImportError:
-            from const import DEVICE_SENSORS
+            try:
+                from const import DEVICE_SENSORS
+            except ImportError:
+                # Fallback sensor structure if imports fail
+                DEVICE_SENSORS = []
         
         # Extract sensor keys from DEVICE_SENSORS tuple
         for sensor_desc in DEVICE_SENSORS:
