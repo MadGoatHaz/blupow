@@ -41,17 +41,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Found BLE device: %s", ble_device.name)
         
     try:
-        # Create the client with the address, connection is handled by the coordinator
-        client = BluPowClient(address)
-        _LOGGER.info("Created BluPow client for address: %s", address)
-        
-        update_interval = entry.options.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
-        
-        # Create the coordinator with the client
+        # Create the coordinator with the MAC address (it will create its own client)
         coordinator = BluPowDataUpdateCoordinator(
             hass, 
-            client,
-            update_interval,
+            address,
         )
         _LOGGER.info("Created BluPow coordinator")
         

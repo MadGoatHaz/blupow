@@ -9,23 +9,32 @@ import logging
 import platform
 import sys
 import struct
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 from datetime import datetime
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakDeviceNotFoundError, BleakError
 from bleak.backends.device import BLEDevice
-from homeassistant.core import HomeAssistant
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
-from .const import (
-    RENOGY_SERVICE_UUID,
-    RENOGY_TX_CHAR_UUID,
-    RENOGY_RX_CHAR_UUID,
-    RENOGY_MANUFACTURER_ID,
-    DEFAULT_SCAN_TIMEOUT,
-    DEFAULT_CONNECT_TIMEOUT,
-    DEVICE_SENSORS,
-    RenogyRegisters,
-)
+try:
+    from .const import (
+        RENOGY_SERVICE_UUID,
+        RENOGY_TX_CHAR_UUID,
+        RENOGY_RX_CHAR_UUID,
+        RENOGY_MANUFACTURER_ID,
+        DEFAULT_SCAN_TIMEOUT,
+        DEFAULT_CONNECT_TIMEOUT,
+    )
+except ImportError:
+    from const import (
+        RENOGY_SERVICE_UUID,
+        RENOGY_TX_CHAR_UUID,
+        RENOGY_RX_CHAR_UUID,
+        RENOGY_MANUFACTURER_ID,
+        DEFAULT_SCAN_TIMEOUT,
+        DEFAULT_CONNECT_TIMEOUT,
+    )
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -217,55 +226,61 @@ class BluPowClient:
     def parse_inverter_stats(self, payload: bytes) -> Dict[str, Any]:
         """Parse inverter statistics (register 4000, 10 words)"""
         data = {}
-        if len(payload) >= 20:  # 10 words = 20 bytes
-            data['input_voltage'] = struct.unpack('>H', payload[2:4])[0] / 10.0
-            data['input_current'] = struct.unpack('>H', payload[4:6])[0] / 100.0
-            data['output_voltage'] = struct.unpack('>H', payload[6:8])[0] / 10.0
-            data['output_current'] = struct.unpack('>H', payload[8:10])[0] / 100.0
-            data['output_frequency'] = struct.unpack('>H', payload[10:12])[0] / 100.0
-            data['battery_voltage'] = struct.unpack('>H', payload[12:14])[0] / 10.0
-            data['temperature'] = struct.unpack('>H', payload[14:16])[0] / 10.0
-            data['input_frequency'] = struct.unpack('>H', payload[18:20])[0] / 100.0
+        if len(payload) >= 23:  # 3 header + 20 data + 2 CRC
+            # Data starts at byte 3 (after device_id, function_code, data_length)
+            data_start = 3
+            data['input_voltage'] = struct.unpack('>H', payload[data_start:data_start+2])[0] / 10.0
+            data['input_current'] = struct.unpack('>H', payload[data_start+2:data_start+4])[0] / 100.0
+            data['output_voltage'] = struct.unpack('>H', payload[data_start+4:data_start+6])[0] / 10.0
+            data['output_current'] = struct.unpack('>H', payload[data_start+6:data_start+8])[0] / 100.0
+            data['output_frequency'] = struct.unpack('>H', payload[data_start+8:data_start+10])[0] / 100.0
+            data['battery_voltage'] = struct.unpack('>H', payload[data_start+10:data_start+12])[0] / 10.0
+            data['temperature'] = struct.unpack('>H', payload[data_start+12:data_start+14])[0] / 10.0
+            data['input_frequency'] = struct.unpack('>H', payload[data_start+16:data_start+18])[0] / 100.0
         return data
 
     def parse_device_id(self, payload: bytes) -> Dict[str, Any]:
         """Parse device ID (register 4109, 1 word)"""
         data = {}
-        if len(payload) >= 4:
-            data['device_id'] = struct.unpack('>H', payload[2:4])[0]
+        if len(payload) >= 7:  # 3 header + 2 data + 2 CRC
+            data_start = 3
+            data['device_id'] = struct.unpack('>H', payload[data_start:data_start+2])[0]
         return data
 
     def parse_inverter_model(self, payload: bytes) -> Dict[str, Any]:
         """Parse inverter model (register 4311, 8 words)"""
         data = {}
-        if len(payload) >= 19:
-            model_bytes = payload[3:19]
-            data['model'] = model_bytes.decode('utf-8').rstrip('\x00')
+        if len(payload) >= 21:  # 3 header + 16 data + 2 CRC
+            data_start = 3
+            model_bytes = payload[data_start:data_start+16]
+            data['model'] = model_bytes.decode('utf-8', errors='ignore').rstrip('\x00')
         return data
 
     def parse_charging_info(self, payload: bytes) -> Dict[str, Any]:
         """Parse charging information (register 4327, 7 words)"""
         data = {}
-        if len(payload) >= 16:  # 7 words + headers
-            data['battery_percentage'] = struct.unpack('>H', payload[2:4])[0]
-            data['charging_current'] = struct.unpack('>h', payload[4:6])[0] / 10.0  # signed
-            data['solar_voltage'] = struct.unpack('>H', payload[6:8])[0] / 10.0
-            data['solar_current'] = struct.unpack('>H', payload[8:10])[0] / 10.0
-            data['solar_power'] = struct.unpack('>H', payload[10:12])[0]
-            charging_status_code = struct.unpack('>H', payload[12:14])[0]
+        if len(payload) >= 19:  # 3 header + 14 data + 2 CRC
+            data_start = 3
+            data['battery_percentage'] = struct.unpack('>H', payload[data_start:data_start+2])[0]
+            data['charging_current'] = struct.unpack('>h', payload[data_start+2:data_start+4])[0] / 10.0  # signed
+            data['solar_voltage'] = struct.unpack('>H', payload[data_start+4:data_start+6])[0] / 10.0
+            data['solar_current'] = struct.unpack('>H', payload[data_start+6:data_start+8])[0] / 10.0
+            data['solar_power'] = struct.unpack('>H', payload[data_start+8:data_start+10])[0]
+            charging_status_code = struct.unpack('>H', payload[data_start+10:data_start+12])[0]
             data['charging_status'] = self._charging_status_map.get(charging_status_code, 'unknown')
-            data['charging_power'] = struct.unpack('>H', payload[14:16])[0]
+            data['charging_power'] = struct.unpack('>H', payload[data_start+12:data_start+14])[0]
         return data
 
     def parse_load_info(self, payload: bytes) -> Dict[str, Any]:
         """Parse load information (register 4408, 6 words)"""
         data = {}
-        if len(payload) >= 14:  # 6 words + headers
-            data['load_current'] = struct.unpack('>H', payload[2:4])[0] / 10.0
-            data['load_active_power'] = struct.unpack('>H', payload[4:6])[0]
-            data['load_apparent_power'] = struct.unpack('>H', payload[6:8])[0]
-            data['line_charging_current'] = struct.unpack('>H', payload[10:12])[0] / 10.0
-            data['load_percentage'] = struct.unpack('>H', payload[12:14])[0]
+        if len(payload) >= 17:  # 3 header + 12 data + 2 CRC
+            data_start = 3
+            data['load_current'] = struct.unpack('>H', payload[data_start:data_start+2])[0] / 10.0
+            data['load_active_power'] = struct.unpack('>H', payload[data_start+2:data_start+4])[0]
+            data['load_apparent_power'] = struct.unpack('>H', payload[data_start+4:data_start+6])[0]
+            data['line_charging_current'] = struct.unpack('>H', payload[data_start+8:data_start+10])[0] / 10.0
+            data['load_percentage'] = struct.unpack('>H', payload[data_start+10:data_start+12])[0]
         return data
 
     async def read_device_info(self) -> Dict[str, Any]:
@@ -316,6 +331,10 @@ class BluPowClient:
             combined_data['connection_status'] = 'connected'
             combined_data['last_update'] = datetime.now().isoformat()
             
+            # Cache results so coordinator can access the latest values
+            if combined_data:
+                self._last_data.update(combined_data)
+
             self._logger.info(f"🎉 Total inverter data collected: {len(combined_data)} fields")
             return combined_data
             
@@ -350,8 +369,11 @@ class BluPowClient:
                 self._logger.warning("⏰ Timeout waiting for real-time data response")
                 return {}
                 
-            # Parse response
-            return self._parse_renogy_response(bytes(self._response_data))
+            # Parse response and cache it
+            parsed = self._parse_renogy_response(bytes(self._response_data))
+            if parsed:
+                self._last_data.update(parsed)
+            return parsed
             
         except Exception as e:
             self._logger.error(f"Error reading real-time data: {e}")
@@ -389,6 +411,11 @@ class BluPowClient:
         This ensures that the entities are still created in Home Assistant but appear as 'Unavailable'.
         """
         offline_data = {}
+        
+        try:
+            from .const import DEVICE_SENSORS
+        except ImportError:
+            from const import DEVICE_SENSORS
         
         # Extract sensor keys from DEVICE_SENSORS tuple
         for sensor_desc in DEVICE_SENSORS:
