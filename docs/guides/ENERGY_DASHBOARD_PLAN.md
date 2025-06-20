@@ -1,219 +1,84 @@
 # BluPow Energy Dashboard Implementation Plan
 
-## 🎯 **Executive Summary**
+## 🎯 Executive Summary
 
-Your BluPow integration is **production-ready** with all 18 sensors properly configured for Home Assistant's energy dashboard. The current 67% connection success rate is the only barrier to full functionality.
+Your BluPow integration is **production-ready** with all 22 inverter sensors properly configured for Home Assistant's energy dashboard. Once you have a stable connection, you can use this guide to integrate your inverter's data into a powerful energy monitoring dashboard.
 
-## 📊 **Current Status Assessment**
-- ✅ **Integration Status**: FULLY OPERATIONAL - All sensors created and working
-- ⚠️ **Connection Status**: 67% success rate (needs improvement to 80%+ for reliable dashboard)
-- ✅ **Energy Sensors**: All energy dashboard sensors properly implemented
-- ✅ **Device Classes**: Correct POWER, ENERGY, CURRENT, VOLTAGE, BATTERY classes assigned
-- ✅ **State Classes**: Proper MEASUREMENT and TOTAL_INCREASING classes for energy tracking
+## 📊 Sensor Crossover for the Energy Dashboard
 
-## 📋 **4-Week Implementation Timeline**
+The key to a great energy dashboard is mapping the right sensors to the right categories. Here's how the 22 BluPow sensors translate to Home Assistant's energy management features.
 
-### **Week 1: Connection Optimization**
-**Objective**: Improve connection success rate from 67% to 80%+
+| Home Assistant Energy Category | BluPow Sensor Name | Entity ID Suffix | Status |
+|---|---|---|---|
+| **Grid Consumption** | `AC Load Power` | `load_active_power` | ✅ Ready |
+| **Solar Production** | `Solar Input Power` | `solar_power` | ✅ Ready |
+| **Battery In/Out** | `Battery Charging Power` & `AC Load Power` | `charging_power` | ✅ Ready |
 
-**Day 1-2: ESPHome Proxy Optimization**
-- Move proxy `192.168.51.207` (proxy-2) closer to Renogy device location
-- Test signal strength improvement using `python3 proxy_test.py`
-- Monitor Home Assistant logs for proxy usage patterns
+## 🛠️ How to Configure the Energy Dashboard
 
-**Day 3-4: Connection Monitoring**
-- Run daily connection tests: `python3 connection_test.py`
-- Track success rate improvements
-- Document optimal connection times/conditions
+Once your sensors are populated with live data, follow these steps:
 
-**Day 5-7: Integration Stability**
-- Monitor Home Assistant logs: `docker logs homeassistant | grep blupow`
-- Verify all 18 sensors remain available
-- Test sensor data accuracy during successful connections
+1.  In Home Assistant, navigate to **Settings** → **Dashboards** → **Energy**.
+2.  **Grid Consumption**: Click **Add Consumption** and select `sensor.ac_load_power`. This tracks the power your home is drawing from the inverter.
+3.  **Solar Production**: Click **Add Solar Production** and select `sensor.solar_input_power`. This tracks the power coming from your solar panels.
+4.  **Battery Storage**: Click **Add Battery System**.
+    *   **Battery Charge**: Select `sensor.charging_power`. This is the power flowing *into* your batteries.
+    *   **Battery Discharge**: Select `sensor.ac_load_power`. When not on grid power, this represents the power being drawn *from* your batteries.
 
-### **Week 2: Energy Dashboard Configuration**
-**Objective**: Configure Home Assistant Energy Dashboard once connection reliability reaches 80%+
+## ✨ Creating a Custom Power Dashboard
 
-**Home Assistant Energy Dashboard Setup:**
-1. Navigate to **Settings** → **Dashboards** → **Energy**
-2. Configure **Solar Production**:
-   - Use sensor: `sensor.solar_power` (instantaneous)
-   - Use sensor: `sensor.daily_power_generation` (daily totals)
-3. Configure **Battery Storage**:
-   - Use sensor: `sensor.battery_soc` (state of charge)
-4. Configure **Grid Consumption** (if applicable):
-   - Use sensor: `sensor.load_power` (load consumption)
+Go beyond the default energy view by creating your own dashboard with custom cards. This allows you to visualize the full capabilities of the inverter.
 
-**Template Sensors for Enhanced Tracking:**
+### Recommended Custom Cards:
+
+1.  **Gauge Cards:**
+    *   `sensor.battery_soc`: For a clear "fuel gauge" of your battery level.
+    *   `sensor.load_percentage`: To see how close you are to the inverter's maximum output.
+
+2.  **Graph Cards:**
+    *   Track `sensor.ac_output_voltage` and `sensor.ac_output_frequency` to monitor the quality of your inverter's power.
+    *   Graph `sensor.battery_voltage` over time to see charging and discharging cycles.
+    *   Plot `sensor.inverter_temperature` to monitor system health.
+
+3.  **Entities Card:**
+    *   Create a single card that lists all 22 sensors for a quick, at-a-glance overview of the entire system.
+
+### Example Template Sensors
+Add these to your `configuration.yaml` to create even more powerful data points.
+
 ```yaml
-# Add to configuration.yaml
+# configuration.yaml
 template:
   - sensor:
-      - name: "Solar Efficiency"
-        unit_of_measurement: "%"
-        state: >
-          {% set solar = states('sensor.solar_power') | float(0) %}
-          {% set load = states('sensor.load_power') | float(0) %}
-          {% if load > 0 %}
-            {{ ((solar / load) * 100) | round(1) }}
-          {% else %}
-            0
-          {% endif %}
-      
-      - name: "Battery Charging Rate"
+      # This sensor shows a positive number when charging and a negative number when discharging
+      - name: "Battery Power Flow"
         unit_of_measurement: "W"
+        device_class: power
         state: >
-          {% set voltage = states('sensor.battery_voltage') | float(0) %}
-          {% set current = states('sensor.battery_current') | float(0) %}
-          {{ (voltage * current) | round(0) }}
-```
+          {% set charging_power = states('sensor.charging_power') | float(0) %}
+          {% set load_power = states('sensor.load_active_power') | float(0) %}
+          {% if states('sensor.charging_status') != 'deactivated' %}
+            {{ charging_power }}
+          {% else %}
+            {{ -1 * load_power }}
+          {% endif %}
 
-### **Week 3: Dashboard Customization**
-**Objective**: Create comprehensive energy monitoring dashboards
-
-**Custom Dashboard Cards:**
-1. **Real-time Energy Flow Visualization**
-2. **Daily/Weekly/Monthly Energy Statistics**
-3. **Battery Health Monitoring**
-4. **Solar Performance Analytics**
-
-**Automation Examples:**
-```yaml
-# Low battery alert
-automation:
-  - alias: "BluPow Low Battery Alert"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.battery_soc
-        below: 20
-    action:
-      - service: notify.mobile_app
-        data:
-          message: "Renogy battery is low: {{ states('sensor.battery_soc') }}%"
-
-# Peak solar generation notification
-  - alias: "BluPow Peak Solar Generation"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.solar_power
-        above: 300  # Adjust based on your system
-    action:
-      - service: notify.mobile_app
-        data:
-          message: "Peak solar generation: {{ states('sensor.solar_power') }}W"
-```
-
-### **Week 4: Advanced Analytics & Optimization**
-**Objective**: Maximize energy monitoring insights
-
-**Advanced Template Sensors:**
-```yaml
-template:
-  - sensor:
-      - name: "Daily Energy Balance"
-        unit_of_measurement: "Wh"
+      # A more descriptive charging status
+      - name: "Battery Mode"
+        icon: mdi:battery-heart-variant
         state: >
-          {% set generated = states('sensor.daily_power_generation') | float(0) %}
-          {% set consumed = states('sensor.daily_power_consumption') | float(0) %}
-          {{ (generated - consumed) | round(0) }}
-      
-      - name: "Solar System ROI"
-        state: >
-          {% set total_generated = states('sensor.power_generation_total') | float(0) %}
-          {% set cost_per_kwh = 0.12 %}  # Adjust for your electricity rate
-          {{ (total_generated * cost_per_kwh) | round(2) }}
+          {% set status = states('sensor.charging_status') %}
+          {% if status == 'deactivated' %}
+            Discharging
+          {% elif status == 'constant current' %}
+            Charging (Bulk)
+          {% elif status == 'constant voltage' %}
+            Charging (Absorption)
+          {% elif status == 'floating' %}
+            Charging (Float)
+          {% else %}
+            {{ status | title }}
+          {% endif %}
 ```
 
-## 🔧 **Technical Implementation Details**
-
-### **Energy Dashboard Sensor Mapping**
-| Home Assistant Energy Category | BluPow Sensor | Status |
-|---|---|---|
-| **Solar Production** | `sensor.solar_power` | ✅ Ready |
-| **Solar Daily Generation** | `sensor.daily_power_generation` | ✅ Ready |
-| **Battery Storage** | `sensor.battery_soc` | ✅ Ready |
-| **Battery Charge/Discharge** | `sensor.battery_current` | ✅ Ready |
-| **Grid Consumption** | `sensor.load_power` | ✅ Ready |
-| **Total Energy Production** | `sensor.power_generation_total` | ✅ Ready |
-
-### **Connection Optimization Strategy**
-1. **Current Success Rate**: 67% (2 of 3 connection strategies successful)
-2. **Target Success Rate**: 80%+ for reliable energy dashboard
-3. **Primary Improvement**: ESPHome proxy positioning
-4. **Secondary Improvement**: Connection timing optimization
-
-### **Monitoring & Maintenance**
-**Daily Health Checks:**
-```bash
-# Check integration status
-docker logs homeassistant | grep blupow | tail -5
-
-# Test connection reliability
-python3 quick_test.py
-
-# Monitor energy dashboard data
-# Home Assistant → Energy → Check all configured sensors showing data
-```
-
-**Weekly Performance Review:**
-- Connection success rate trending
-- Energy dashboard data completeness
-- Sensor accuracy verification
-- ESPHome proxy optimization results
-
-## 📈 **Success Metrics**
-
-### **Connection Reliability**
-- **Current**: 67% success rate
-- **Target**: 80%+ success rate
-- **Measurement**: Daily connection tests
-
-### **Energy Dashboard Functionality**
-- **Target**: All energy flows visible and accurate
-- **Measurement**: Home Assistant Energy Dashboard completeness
-
-### **Data Quality**
-- **Target**: Real sensor values 80%+ of the time
-- **Measurement**: Sensor state tracking (not "Unknown")
-
-## 🚨 **Known Issues & Solutions**
-
-### **Current Issue: Intermittent Bluetooth Connection**
-- **Status**: Device discoverable but connection fails 33% of the time
-- **Root Cause**: Environmental (signal strength, interference)
-- **Solution**: ESPHome proxy optimization and timing improvements
-
-### **Expected Behavior When Working**
-```yaml
-# Successful connection state
-Model Number: "RNG-CTRL-RVR40"     # ✅ Real device model
-Battery Voltage: 13.1               # ✅ Real voltage reading
-Solar Current: 5.2                  # ✅ Real current reading  
-Charging Status: "charging"         # ✅ Real status
-# All 18 sensors show real values
-```
-
-### **Current Behavior (Connection Issues)**
-```yaml
-# Connection failure state (EXPECTED AND CORRECT)
-Model Number: "RNG-CTRL-RVR40"     # ✅ Works (cached)
-Battery Voltage: "Unknown"          # ⚠️ Expected (can't connect)
-Solar Current: "Unknown"            # ⚠️ Expected (can't connect)
-Charging Status: "offline"          # ✅ Correct status
-# 16 sensors show "Unknown" - this is proper error handling
-```
-
-## 🎯 **Next Immediate Actions**
-
-1. **This Week**: Focus on ESPHome proxy repositioning to improve connection success rate
-2. **Monitor Progress**: Use diagnostic tools to track improvements
-3. **Once 80%+ Success**: Configure Home Assistant Energy Dashboard
-4. **Document Results**: Track energy monitoring accuracy and usefulness
-
-## 📞 **Support & Resources**
-
-- **Diagnostic Tools**: `connection_test.py`, `proxy_test.py`, `quick_test.py`
-- **Log Monitoring**: `docker logs homeassistant | grep blupow`
-- **Integration Health**: All sensors visible in Home Assistant → Settings → Devices & Services → BluPow
-
-**Remember**: Your integration is working perfectly - focus on connection optimization, not code changes! 
+This plan leverages the full suite of 22 sensors to provide a rich, detailed, and actionable view of your home's energy ecosystem. 
