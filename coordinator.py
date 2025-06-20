@@ -264,10 +264,27 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
                 
                 duration = time.time() - operation_start
                 
-                if result['success'] and result['output'].startswith("SUCCESS:"):
-                    # Parse successful data
-                    data_str = result['output'][8:]  # Remove "SUCCESS:" prefix
-                    data = eval(data_str)  # Safe since we control the format
+                if result['success']:
+                    # Look for SUCCESS line in output
+                    success_line = None
+                    for line in result['output'].split('\n'):
+                        if line.startswith("SUCCESS:"):
+                            success_line = line
+                            break
+                    
+                    if success_line:
+                        # Parse successful data
+                        data_str = success_line[8:]  # Remove "SUCCESS:" prefix
+                        try:
+                            import json
+                            data = json.loads(data_str)
+                        except (json.JSONDecodeError, ValueError) as e:
+                            _LOGGER.error(f"Failed to parse subprocess data: {e}")
+                            raise
+                    else:
+                        # No SUCCESS line found - treat as failure
+                        _LOGGER.error(f"No SUCCESS line found in subprocess output: {result['output'][:200]}...")
+                        raise ValueError("No SUCCESS line in subprocess output")
                     
                     # Record success metrics
                     self.health_monitor.record_update_attempt(True, duration)
@@ -373,7 +390,21 @@ async def enhanced_data_retrieval():
     max_attempts = 3
     
     try:
-        from blupow.blupow_client import BluPowClient
+        try:
+            # Try relative import first (Home Assistant environment)
+            from .blupow_client import BluPowClient
+        except ImportError:
+            try:
+                # Fallback for subprocess execution - add correct path
+                sys.path.append('/config/custom_components/blupow')
+                from blupow_client import BluPowClient
+            except ImportError:
+                try:
+                    # Final fallback - try absolute import
+                    from custom_components.blupow.blupow_client import BluPowClient
+                except ImportError:
+                    print("ERROR:Cannot import BluPowClient from any location")
+                    return False
         
         client = BluPowClient("{self.mac_address}")
         
