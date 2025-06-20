@@ -38,7 +38,7 @@ RENOGY_MANUFACTURER_ID: Final = 0x7DE0  # Renogy manufacturer ID
 
 # Connection timeouts
 DEFAULT_SCAN_TIMEOUT: Final = 10.0
-DEFAULT_CONNECT_TIMEOUT: Final = 15.0
+DEFAULT_CONNECT_TIMEOUT: Final = 20.0
 
 # Register Addresses (for devices that support Modbus)
 REG_DEVICE_MODEL = 0x000A
