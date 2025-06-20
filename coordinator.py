@@ -33,24 +33,33 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         _LOGGER.info("BluPow coordinator initialized for device: %s", self.client.address)
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """
-        Fetch data from the BluPow client.
+        """Fetch data from the inverter."""
+        _LOGGER.debug(f"Starting data update for {self.client.address}")
         
-        This method is called by the DataUpdateCoordinator to refresh the data.
-        It calls the get_data() method of the client, which handles connection,
-        data retrieval, and formatting.
-        """
-        _LOGGER.debug("Starting data update for %s", self.client.address)
         try:
-            data = await self.client.get_data()
-            _LOGGER.debug("Data received from client: %s", data.keys())
-            return data
+            if not self.client.is_connected:
+                _LOGGER.info("Client not connected, attempting to connect...")
+                if self.ble_device:
+                    await self.client.connect(self.ble_device)
+                else:
+                    _LOGGER.error("No BLE device available to initiate connection.")
+                    return self.client.get_data() # Return offline data
+
+            if self.client.is_connected:
+                # First, ensure we have the model number
+                if not self.client.get_data().get('model_number'):
+                    await self.client.read_device_info()
+                
+                # Then, fetch the main data block
+                await self.client.read_realtime_data()
+
         except Exception as err:
-            _LOGGER.error("Error fetching BluPow data: %s", err, exc_info=True)
-            # In case of an unexpected error, return the offline structure
-            # The client should handle most errors and return an offline dict,
-            # but this is a fallback.
-            return self.client._get_offline_data()
+            _LOGGER.error(f"Error communicating with device: {err}")
+            # In case of any error, ensure we are disconnected to force a reconnect on next attempt
+            await self.client.disconnect()
+        
+        _LOGGER.debug(f"Data received from client: {self.client.get_data().keys()}")
+        return self.client.get_data()
 
     @property
     def device_info(self) -> Dict[str, Any]:

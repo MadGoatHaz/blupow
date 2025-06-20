@@ -15,21 +15,31 @@ The primary blocker has been resolved. The development focus now shifts from est
 
 ## 2. ✅ ~~Map Parsed Data to Home Assistant Sensors~~ (Completed)
 
-- **Objective:** Integrate the data received from `BluPowClient` into the Home Assistant entity model.
-- **Actions Taken:**
-    - **Implemented Robust Parsing:** Re-engineered `blupow_client.py` to read a large block of data from the device in a single request. Implemented a complete register map in `const.py` based on `cyrils/renogy-bt` to correctly parse all expected values.
-    - **Refactored Coordinator and Sensor:** Massively simplified `coordinator.py` and `sensor.py` to work efficiently with the new client. The coordinator now acts as a lightweight wrapper, and the sensor entities are much cleaner.
-    - **Stabilized Connection:** Replaced unreliable `sleep` calls with `asyncio.Event` for robust, event-driven data reception, improving speed and stability.
-- **Outcome:** All 18 sensors for the Renogy device now populate with correct, real-time data in Home Assistant.
+- **Objective:** Integrate the data received from `BluPowClient` into the Home Assistant `sensor` entities.
+- **Action:**
+  - Implemented a block read for 34 registers starting at `0x0100` in `blupow_client.py`.
+  - Created a `RenogyRegisters` class in `const.py` to map the data correctly.
+  - Refactored `_update_data_from_registers` to parse the block and populate all 18 sensor values.
+  - Simplified `coordinator.py` and `sensor.py` to be clean, efficient wrappers.
+- **Outcome:** All 18 sensors are created and mapped to the data from the client.
 
-## 3. Refine Connection Management and Error Handling (Next)
+## 3. ✅ Improve Connection Stability (Completed)
+
+- **Objective:** Address connection dropouts and `ESP_GATT_CONN_FAIL_ESTABLISH` errors.
+- **Action:**
+  - Replaced `asyncio.sleep` with a more reliable `asyncio.Event` for data synchronization in `blupow_client.py`.
+  - Added explicit support for ESPHome Bluetooth Proxies to leverage better signal strength.
+  - Refactored the `coordinator.py` to implement a robust connect/disconnect cycle, ensuring a clean state for each connection attempt.
+- **Outcome:** The integration is now more resilient to transient Bluetooth errors and should recover automatically from connection failures.
+
+## 4. Refine Connection Management and Error Handling (Next)
 
 - **Objective:** Make the integration robust and stable for long-term use.
 - **Actions:**
     - **Configuration:** Allow the Modbus `device_id` to be configured in the `config_flow.py` UI instead of being hardcoded, as it may vary between devices.
     - **Error States:** Ensure that `BleakError` and other exceptions are caught gracefully and reported to the user through the UI in all edge cases.
 
-## 4. Documentation and Cleanup (Next)
+## 5. Documentation and Cleanup (Next)
 
 - **Objective:** Finalize the integration for a beta release.
 - **Actions:**
@@ -95,3 +105,11 @@ The core of the work will be in `blupow_client.py`. The received notification `f
 ## 3. Goal State
 
 All sensors for the Renogy device in Home Assistant should display correct, real-time numerical data, updating at the interval set by the coordinator. The "Unknown" state should be completely eliminated for all primary sensors. 
+
+## Future Enhancements (Post-MVP)
+
+- **[ ] Add `switch` and `select` entities:** Implement controls for settings like the load switch or battery type.
+- **[ ] Configuration validation:** Add more robust checks in the `config_flow` to prevent user errors.
+- **[ ] Broader device support:** Investigate compatibility with other Renogy products (e.g., inverters, other controller models).
+- **[ ] UI-based configuration:** Allow users to adjust Modbus settings or timeouts from the Home Assistant UI.
+- **[ ] Automated testing:** Develop a comprehensive suite of unit and integration tests. 
