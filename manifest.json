@@ -6,7 +6,7 @@
   "issue_tracker": "https://github.com/madgoat/blupow/issues",
   "codeowners": ["@madgoat"],
   "dependencies": ["bluetooth"],
-  "requirements": ["bleak>=0.21.0"],
+  "requirements": ["bleak>=0.21.0", "bleak-esphome>=0.9.0"],
   "iot_class": "local_polling",
   "config_flow": true,
   "bluetooth": [
