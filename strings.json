@@ -2,19 +2,59 @@
   "config": {
     "step": {
       "user": {
-        "title": "BluPow: Renogy Bluetooth",
-        "description": "Select your Renogy device from the list below.",
+        "title": "BluPow Renogy Device Setup",
+        "description": "Configure your Renogy device for Home Assistant integration. Based on cyrils/renogy-bt patterns.",
         "data": {
-          "address": "Device"
+          "address": "Device MAC Address",
+          "name": "Device Name (optional)",
+          "use_discovery": "Use automatic device discovery"
+        },
+        "data_description": {
+          "address": "MAC address of your Renogy device (e.g., D8:B6:73:BF:4F:75)",
+          "name": "Friendly name for your device",
+          "use_discovery": "Automatically scan for and identify Renogy devices using Cyril's patterns"
         }
+      },
+      "discovery": {
+        "title": "Select Renogy Device",
+        "description": "Found {devices_found}. {recommendation}",
+        "data": {
+          "device": "Select Device"
+        }
+      },
+      "discovery_failed": {
+        "title": "Device Discovery Failed",
+        "description": "No Renogy devices were found. {troubleshooting}",
+        "data": {}
       }
     },
-    "errors": {
-      "cannot_connect": "Failed to connect to the device. Please ensure it is online, in range, and not connected to another app (like the Renogy app on your phone)."
+    "error": {
+      "invalid_address": "Invalid MAC address format. Use format: AA:BB:CC:DD:EE:FF",
+      "no_devices_found": "No Renogy devices found during discovery",
+      "discovery_failed": "Device discovery failed: {error}",
+      "cannot_connect": "Failed to connect to device",
+      "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "This device is already configured.",
-      "no_devices_found": "No compatible Renogy devices found. Please ensure your device is powered on and within Bluetooth range."
+      "already_configured": "Device with this MAC address is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BluPow Options",
+        "description": "Configure advanced options for your BluPow integration",
+        "data": {
+          "update_interval": "Update interval (seconds)",
+          "enable_diagnostics": "Enable diagnostic logging",
+          "connection_timeout": "Connection timeout (seconds)"
+        },
+        "data_description": {
+          "update_interval": "How often to update sensor data (10-300 seconds)",
+          "enable_diagnostics": "Enable detailed logging for troubleshooting",
+          "connection_timeout": "Maximum time to wait for device connection (5-60 seconds)"
+        }
+      }
     }
   },
   "title": "BluPow: Renogy Bluetooth"

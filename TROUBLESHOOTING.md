@@ -1,31 +1,50 @@
 # BluPow Integration Troubleshooting Guide
 
-## Current Status: Integration Working, Connection Issues
+This guide helps you solve common issues with the BluPow integration. Please read the sections below to diagnose your problem.
 
-✅ **Integration Status**: FULLY OPERATIONAL
-- All 18 sensors successfully created
-- Device detection working (`BTRIC134000035` at `D8:B6:73:BF:4F:75`)
-- ESPHome proxy detection working (3 proxies found)
-- Graceful error handling implemented
+---
 
-❌ **Connection Issue**: `ESP_GATT_CONN_FAIL_ESTABLISH`
-- Device is found during scans
-- Connection attempts fail consistently
-- This is a Bluetooth connectivity issue, not a code problem
+## Problem 1: Device Not Found in Scan
 
-## Quick Diagnosis
+This is the most common issue for new setups. Your Home Assistant log will show messages like:
 
-Your logs show the integration is working perfectly:
 ```
-✅ Device D8:B6:73:BF:4F:75 is available and advertising
-✅ Model Number: RNG-CTRL-RVR40 
-✅ Charging Status: offline (correct when disconnected)
-✅ All 18 sensors created and available
+WARNING (MainThread) [custom_components.blupow.blupow_client] ⚠️ Device D8:B6:73:BF:4F:75 not found in scan
+WARNING (MainThread) [custom_components.blupow.coordinator] Device D8:B6:73:BF:4F:75 is not available
 ```
 
-The issue is **Bluetooth connection failures**, not integration failures.
+This means your Home Assistant instance cannot "see" the Renogy device via Bluetooth.
 
-## Troubleshooting Steps
+### ✅ Step 1: Run the Diagnostic Tool
+
+We have a built-in diagnostic tool to help you. Run it from your Home Assistant's terminal or a terminal with access to the codebase:
+
+```bash
+python3 blupow_testing_suite.py
+```
+
+When prompted, select option `6` for **Current Device Diagnostics**.
+
+The tool will tell you if the device is visible and if it can connect.
+
+### ⚙️ Step 2: Common Causes & Solutions
+
+If the diagnostic tool fails, here are the likely reasons why:
+
+| Cause                                   | Solution                                                                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Device is Off**                       | Ensure your Renogy charge controller or device has power. Check the physical display.                                                                                          |
+| **Bluetooth is Off/Asleep**             | Some Renogy devices have a power-saving mode that disables Bluetooth. Try connecting during peak sun hours when the device is most active.                                       |
+| **Device is Paired Elsewhere**          | Your Renogy device can only connect to **one** thing at a time. **Disconnect the official Renogy app on your phone** or any other device that might be connected to it.         |
+| **Out of Range**                        | Bluetooth has a limited range. Move your Home Assistant device (or Bluetooth proxy) closer to the Renogy device. Physical barriers like concrete and metal walls reduce range.    |
+| **Incorrect MAC Address**               | Double-check that the MAC address you entered in the BluPow integration configuration in Home Assistant is correct.                                                              |
+| **Host Bluetooth Issues**               | Your computer or Raspberry Pi's Bluetooth adapter might be malfunctioning. Try restarting the Bluetooth service or the entire host machine.                                      |
+
+---
+
+## Problem 2: Connection Fails (Device is Found)
+
+If the diagnostic tool **finds** your device but **cannot connect**, or your logs show errors like `ESP_GATT_CONN_FAIL_ESTABLISH`, it means there's a problem establishing a stable connection.
 
 ### 1. Immediate Actions
 
@@ -52,7 +71,7 @@ sudo hciconfig -a
 **Renogy Device Power Management:**
 - The device may be in deep sleep mode
 - Try connecting during different times of day
-- Power cycle the device if possible
+- Power cycle the device if possible.
 - Check if device has a "pairing mode" or "Bluetooth enable" setting
 
 **Signal Strength Optimization:**
@@ -85,7 +104,7 @@ sudo systemctl start bluetooth
 
 ### 4. ESPHome Proxy Optimization
 
-Your logs show 3 proxies detected:
+Your logs may show proxies detected like:
 - `esp32-bluetooth-proxy-2105e4` (192.168.51.151) - Primary
 - `proxy-2` (192.168.51.207) - Secondary  
 - `proxy-3` (192.168.51.109) - Tertiary
@@ -122,72 +141,11 @@ free -h
 ps aux | grep blue
 ```
 
-### 6. Connection Timing Solutions
-
-**Retry Logic Enhancement:**
-The integration already has retry logic, but you can try:
-- Restarting Home Assistant during different times
-- Checking if device responds better at certain times
-- Looking for patterns in connection success/failure
-
-### 7. Alternative Connection Methods
-
-**Direct Connection Test:**
-```python
-# Test direct connection without Home Assistant
-import asyncio
-from bleak import BleakClient
-
-async def test_direct():
-    async with BleakClient("D8:B6:73:BF:4F:75", timeout=20.0) as client:
-        print(f"Connected: {client.is_connected}")
-        if client.is_connected:
-            services = await client.get_services()
-            print(f"Services: {len(services)}")
-
-asyncio.run(test_direct())
-```
-
-## Expected Behavior
-
-**When Working Properly:**
-- Charging Status: Shows actual status (charging/discharging/float)
-- All sensors: Show real values instead of "Unknown"
-- Connection Status: "connected" instead of "offline"
-
-**Current Behavior (Connection Issues):**
-- Model Number: ✅ `RNG-CTRL-RVR40` (works because it's cached)
-- Charging Status: `offline` (correct for failed connections)
-- All other sensors: `Unknown` (expected when can't connect)
-
-## Monitoring Success
-
-Watch your Home Assistant logs for these success indicators:
-```
-✅ Connection successful messages
-✅ Real sensor values appearing
-✅ Charging status changing from "offline"
-```
+---
 
 ## When to Seek Help
 
 Contact support if:
-1. Device never appears in scans (hardware issue)
-2. All troubleshooting steps fail
-3. Connection works but data is incorrect
-4. Integration stops detecting device entirely
-
-## Integration Health Check
-
-Your integration is healthy if you see:
-- ✅ Device detection in logs
-- ✅ ESPHome proxy detection  
-- ✅ All 18 sensors created
-- ✅ Graceful error handling
-- ✅ Regular update attempts
-
-The only issue is the Bluetooth connection establishment, which is environmental/hardware related, not code related.
-
----
-
-**Remember**: Your BluPow integration is working perfectly. This is a Bluetooth connectivity issue that needs hardware/environmental troubleshooting, not code fixes. 
+1. The diagnostic tool never finds the device, and you have tried all solutions in this guide.
+2. The diagnostic tool finds the device, but connection tests always fail.
+3. Connection works but data is incorrect. 
