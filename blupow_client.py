@@ -16,7 +16,6 @@ from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakDeviceNotFoundError, BleakError
 from bleak.backends.device import BLEDevice
 from homeassistant.core import HomeAssistant
-import homeassistant.components.bluetooth as bluetooth
 
 from .const import (
     RENOGY_SERVICE_UUID,
@@ -83,6 +82,8 @@ class BluPowClient:
         self._last_data = {}
         self._is_connected = False
         self._ble_device: Optional[BLEDevice] = None
+        self._buffer = bytearray()
+        self.device_id = 1 # Default device ID
 
         # ESPHome Bluetooth Proxy support
         # This will be checked later when device is available
@@ -225,7 +226,8 @@ class BluPowClient:
         if self._is_connected:
             return True
 
-        self._ble_device = bluetooth.async_ble_device_from_address(self.hass, self.address, connectable=True)
+        self._ble_device = await BleakScanner.find_device_by_address(self.address, timeout=10.0)
+        
         if not self._ble_device:
             _LOGGER.warning(f"Renogy device {self.address} not found, will retry.")
             return False
@@ -316,24 +318,102 @@ class BluPowClient:
             return False
     
     def _notification_handler(self, sender, data: bytearray):
-        """Handle notifications from Renogy device"""
-        _LOGGER.debug(f"📨 Notification received: {data.hex()}")
+        """Handle notifications from Renogy device, buffering data until a complete frame is received."""
+        _LOGGER.debug(f"📨 Notification chunk received: {data.hex()}")
+        self._buffer.extend(data)
+        _LOGGER.debug(f"Buffer content: {self._buffer.hex()}")
+
+        # Process all complete frames in the buffer
+        while True:
+            frame = self._find_complete_frame()
+            if frame:
+                _LOGGER.info(f"✅ Complete frame found in buffer: {frame.hex()}")
+                self._process_modbus_response(frame)
+            else:
+                break  # No more complete frames in the buffer
+
+    def _find_complete_frame(self) -> Optional[bytearray]:
+        """
+        Check the buffer for a complete Modbus frame.
+        A valid frame is: [0xFF, 0x03, length, ...data..., checksum_high, checksum_low]
+        Returns the frame if found, and removes it from the buffer. Otherwise returns None.
+        """
+        # Look for the start of a frame (0xFF)
+        start_index = self._buffer.find(b'\xff')
+        if start_index == -1:
+            # If no start byte, the buffer is invalid. Clear it.
+            if len(self._buffer) > 0:
+                _LOGGER.warning(f"Buffer contains invalid data without a start byte. Clearing: {self._buffer.hex()}")
+                self._buffer.clear()
+            return None
         
-        # Process Renogy Modbus response
-        if len(data) >= 3 and data[0] == 0xFF and data[1] == 0x03:
-            self._process_modbus_response(data)
-    
-    def _process_modbus_response(self, data: bytearray):
-        """Process Modbus response from Renogy device"""
-        try:
-            if len(data) < 5:
-                return
-                
-            # Parse Modbus response
-            # Format: [0xFF, 0x03, length, data..., checksum]
-            data_length = data[2]
-            payload = data[3:3+data_length]
+        # If there's data before the start byte, discard it.
+        if start_index > 0:
+            _LOGGER.warning(f"Discarding {start_index} bytes of invalid data from start of buffer: {self._buffer[:start_index].hex()}")
+            self._buffer = self._buffer[start_index:]
+        
+        # We need at least 3 bytes for header (ID, Func, Len)
+        if len(self._buffer) < 3:
+            _LOGGER.debug("Buffer has less than 3 bytes, waiting for more data.")
+            return None
+
+        # Check for function code 0x03 (read) or 0x83 (read exception)
+        if self._buffer[1] not in [0x03, 0x83]:
+            # This is not a response frame we are looking for. It could be noise or an unsupported command response.
+            _LOGGER.warning(f"Invalid function code {self._buffer[1]:02x} received. Discarding the first byte and retrying.")
+            self._buffer = self._buffer[1:]
+            return None # Restart the search for a valid frame
+
+        # Handle Modbus exception response (e.g., ff8305e0c3)
+        if self._buffer[1] == 0x83:
+            # Exception frame length is typically 5 bytes (ID, Func, ErrCode, CRC_H, CRC_L)
+            if len(self._buffer) >= 5:
+                exception_frame = self._buffer[:5]
+                self._buffer = self._buffer[5:]
+                _LOGGER.warning(f"Modbus Exception received and discarded: {exception_frame.hex()}")
+                return None # The frame is "handled" by being discarded, restart search
+            else:
+                # Not enough data for a full exception frame yet
+                return None
+
+        # This should be a data frame (0x03)
+        payload_len = self._buffer[2]
+        frame_len = 3 + payload_len + 2  # Header (3) + Payload + CRC (2)
+
+        if len(self._buffer) >= frame_len:
+            # We have a full frame
+            frame = self._buffer[:frame_len]
+            self._buffer = self._buffer[frame_len:] # Keep the rest of the buffer
+
+            # Validate checksum before returning the frame
+            expected_crc = struct.unpack('>H', frame[-2:])[0]
+            calculated_crc = self._calculate_crc16(frame[:-2])
             
+            if expected_crc == calculated_crc:
+                return frame
+            else:
+                _LOGGER.error(f"CRC Checksum mismatch! Expected: {expected_crc:04x}, Calculated: {calculated_crc:04x}. Discarding frame: {frame.hex()}")
+                # Frame is corrupt, discard and continue searching
+                return None
+        else:
+            _LOGGER.debug(f"Incomplete frame. Need {frame_len} bytes, have {len(self._buffer)}. Waiting for more data.")
+            return None
+
+    def _process_modbus_response(self, data: bytearray):
+        """Process a complete Modbus response frame from Renogy device"""
+        try:
+            # The frame has already been validated by _find_complete_frame
+            _LOGGER.debug(f"Processing validated Modbus response: {data.hex()}")
+
+            # Format: [0xFF, 0x03, length, data..., checksum_high, checksum_low]
+            data_length = data[2]
+            payload = data[3:3 + data_length]
+            
+            # This check is now redundant but safe
+            if len(payload) != data_length:
+                _LOGGER.error(f"Payload length mismatch. Expected {data_length}, got {len(payload)}. Frame: {data.hex()}")
+                return
+
             _LOGGER.debug(f"Processing Modbus response: length={data_length}, payload={payload.hex()}")
             
             # Parse register values (16-bit big-endian)
@@ -376,60 +456,49 @@ class BluPowClient:
         except Exception as e:
             _LOGGER.error(f"Error updating data from registers: {e}")
     
-    async def read_device_data(self) -> Dict[str, Any]:
-        """Read data from Renogy device using Modbus protocol"""
-        if not self._is_connected:
-            if not await self.connect():
-                return {}
-        
+    async def read_device_data(self, start_register: int, num_registers: int) -> dict:
+        """Read data from a specific register on the Renogy device."""
+        if not self.client or not self.client.is_connected:
+            _LOGGER.error("Not connected to device.")
+            return {"error": "Not connected"}
+
         try:
-            # Renogy Modbus read command
-            # Format: [0xFF, 0x03, start_reg_high, start_reg_low, num_regs_high, num_regs_low, checksum_high, checksum_low]
+            services = await self.client.get_services()
+            tx_char = self.get_characteristic(services, RENOGY_TX_CHAR_UUID)
             
-            # Read basic device info (registers 0x0100 to 0x0106)
-            start_register = 0x0100
-            num_registers = 7
-            
-            command = bytearray([
-                0xFF, 0x03,
-                (start_register >> 8) & 0xFF,
-                start_register & 0xFF,
-                (num_registers >> 8) & 0xFF,
-                num_registers & 0xFF
-            ])
-            
-            # Calculate Modbus CRC16 checksum
-            checksum = self._calculate_crc16(command)
-            command.extend([(checksum >> 8) & 0xFF, checksum & 0xFF])
-            
-            _LOGGER.debug(f"Sending Modbus command: {command.hex()}")
-            
-            # Send command via TX characteristic
-            if self.client:
-                tx_char = None
-                services = self.client.services
-                if services:
-                    for service in services:
-                        for char in service.characteristics:
-                            if char.uuid.lower() == RENOGY_TX_CHAR_UUID.lower():
-                                tx_char = char
-                                break
+            # Format: [device_id, function_code, start_reg_high, start_reg_low, num_regs_high, num_regs_low, checksum_high, checksum_low]
+            command = self.create_modbus_command(self.device_id, 0x03, start_register, num_registers)
+
+            if tx_char:
+                await self.client.write_gatt_char(tx_char, command)
                 
-                if tx_char:
-                    await self.client.write_gatt_char(tx_char, command)
-                
-                # Wait for response
-                await asyncio.sleep(0.5)
+                # Wait for response, giving the device time to send multiple packets
+                await asyncio.sleep(5.0)
                 
                 return self._last_data
             else:
                 _LOGGER.error("TX characteristic not found")
-                return {}
+                return {"error": "TX characteristic not found"}
                 
         except Exception as e:
             _LOGGER.error(f"Error reading device data: {e}")
-            return {}
-    
+            return {"error": f"Failed to read data: {e}"}
+
+    def create_modbus_command(self, device_id: int, function_code: int, start_register: int, num_registers: int) -> bytearray:
+        """Create a Modbus RTU command."""
+        command = bytearray([
+            device_id,
+            function_code,
+            (start_register >> 8) & 0xFF,
+            start_register & 0xFF,
+            (num_registers >> 8) & 0xFF,
+            num_registers & 0xFF
+        ])
+        crc = self._calculate_crc16(command)
+        command.extend([crc & 0xFF, (crc >> 8) & 0xFF])
+        _LOGGER.debug(f"➡️  Sending Modbus command: {command.hex()}")
+        return command
+
     def _calculate_crc16(self, data: bytearray) -> int:
         """Calculate Modbus CRC16 checksum"""
         crc = 0xFFFF
@@ -442,11 +511,19 @@ class BluPowClient:
                     crc >>= 1
         return crc
     
+    def get_characteristic(self, services, uuid):
+        """Get a characteristic by UUID."""
+        for service in services:
+            for char in service.characteristics:
+                if char.uuid.lower() == uuid.lower():
+                    return char
+        return None
+
     async def get_data(self) -> Dict[str, Any]:
         """Get current device data with improved error handling and fallback"""
         try:
             # Try to read fresh data
-            fresh_data = await self.read_device_data()
+            fresh_data = await self.read_device_data(start_register=0x0100, num_registers=7)
             
             if fresh_data:
                 # Enhance with additional computed values
@@ -479,7 +556,7 @@ class BluPowClient:
                 })
                 
                 # Add RSSI if available
-                if hasattr(self._ble_device, 'rssi'):
+                if self._ble_device and hasattr(self._ble_device, 'rssi'):
                     enhanced_data['rssi'] = self._ble_device.rssi
                 
                 return enhanced_data

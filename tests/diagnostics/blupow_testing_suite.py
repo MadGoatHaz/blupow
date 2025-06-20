@@ -23,28 +23,10 @@ from typing import Dict, List, Optional, Any
 import os
 
 # Import our testing systems
-try:
-    # When running from deployed location
-    import sys
-    import os
-    
-    # Add the current directory to path so we can import sibling modules
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, current_dir)
-    
-    from device_discovery_system import BluPowDeviceDiscoverySystem
-    from device_wake_system import DeviceWakeSystem, TARGET_DEVICE
-    
-    # Add the parent directory to import the main blupow modules
-    parent_dir = os.path.dirname(os.path.dirname(current_dir))
-    sys.path.insert(0, parent_dir)
-    
-    from blupow_client import BluPowClient
-    from const import RENOGY_SERVICE_UUID, RENOGY_TX_CHAR_UUID, RENOGY_RX_CHAR_UUID
-except ImportError as e:
-    print(f"Error importing BluPow modules: {e}")
-    print("Please ensure you're running from the BluPow directory")
-    sys.exit(1)
+from .device_discovery_system import BluPowDeviceDiscoverySystem
+from .device_wake_system import DeviceWakeSystem, TARGET_DEVICE
+from ...blupow_client import BluPowClient
+from ...const import RENOGY_SERVICE_UUID, RENOGY_TX_CHAR_UUID, RENOGY_RX_CHAR_UUID
 
 # Configure logging
 logging.basicConfig(
@@ -61,6 +43,43 @@ class BluPowTestingSuite:
         self.wake_system = DeviceWakeSystem()
         self.test_results = {}
         
+    async def run(self):
+        """Display menu and run selected tests."""
+        self.display_welcome()
+        
+        while True:
+            try:
+                choice = input("Select test mode (1-6, or 'q' to quit): ").strip().lower()
+
+                if choice in ['q', 'quit']:
+                    print("👋 Exiting BluPow Testing Suite")
+                    break
+                
+                test_mapping = {
+                    '1': self.device_discovery_test,
+                    '2': self.device_wake_test,
+                    '3': self.proxy_optimization_test,
+                    '4': self.comprehensive_analysis,
+                    '5': self.quick_setup_assistant,
+                    '6': self.current_device_diagnostics,
+                }
+
+                test_func = test_mapping.get(choice)
+                if test_func:
+                    await test_func()
+                else:
+                    print("❌ Invalid choice. Please select 1-6 or 'q' to quit.")
+                
+                print("\n" + "="*80)
+                input("Press Enter to continue...")
+                print()
+
+            except (KeyboardInterrupt, EOFError):
+                print("\n👋 Exiting BluPow Testing Suite")
+                break
+            except Exception as e:
+                _LOGGER.error(f"An error occurred: {e}", exc_info=True)
+
     def display_welcome(self):
         """Display welcome message and testing options"""
         print("🚀 BLUPOW COMPREHENSIVE TESTING SUITE")
@@ -399,108 +418,66 @@ class BluPowTestingSuite:
         return len(renogy_devices) > 0
     
     async def current_device_diagnostics(self):
-        """Diagnose current device connection issues"""
+        """Diagnose current device connection issues and test data parsing."""
         print("🔧 CURRENT DEVICE DIAGNOSTICS")
         print("="*60)
         print(f"Diagnosing: {TARGET_DEVICE['name']} ({TARGET_DEVICE['address']})")
         print("")
         
         # Test current device status
-        print("🧪 Testing current device connectivity...")
+        print("🧪 Testing current device connectivity and data parsing...")
         
+        # Mock Home Assistant instance for the client
+        class MockHass:
+            def __init__(self):
+                self.data = {}
+
         try:
-            # Quick connectivity test
-            from bleak import BleakScanner, BleakClient
+            # Create a BluPowClient instance
+            client = BluPowClient(TARGET_DEVICE['address'], hass=MockHass())
+
+            # Connect to the device
+            if not await client.connect():
+                print("❌ Connection failed.")
+                return
+
+            # Get data
+            data = await client.get_data()
             
-            devices = await BleakScanner.discover(timeout=10.0)
-            device_found = False
-            
-            for device in devices:
-                if device.address.upper() == TARGET_DEVICE['address'].upper():
-                    device_found = True
-                    rssi = getattr(device, 'rssi', None)
-                    print(f"✅ Device found! Signal: {rssi} dBm")
-                    
-                    # Test connection
-                    try:
-                        async with BleakClient(device, timeout=10.0) as client:
-                            if client.is_connected:
-                                print("✅ Connection successful!")
-                                
-                                services = await client.get_services()
-                                print(f"📋 Found {len(list(services))} services")
-                                
-                                # Check for Renogy services
-                                renogy_services = []
-                                for service in services:
-                                    if str(service.uuid).lower() in [RENOGY_SERVICE_UUID.lower()]:
-                                        renogy_services.append(str(service.uuid))
-                                
-                                if renogy_services:
-                                    print(f"🔧 Renogy services detected: {len(renogy_services)}")
-                                    print("✅ Device is ready for use!")
-                                else:
-                                    print("⚠️  No Renogy services found")
-                                    
-                            else:
-                                print("❌ Connection failed")
-                                
-                    except Exception as e:
-                        print(f"❌ Connection error: {e}")
-                    
-                    break
-            
-            if not device_found:
-                print("❌ Device not found in scan")
-                print("💡 Recommendations:")
-                print("   • Run device wake-up testing")
-                print("   • Check if device is powered on")
-                print("   • Ensure device is not connected elsewhere")
-                print("   • Try moving closer to device")
-            
-            return device_found
-            
+            # Display results
+            if data and "error" not in data:
+                print("✅ Data received successfully!")
+                print(json.dumps(data, indent=4))
+            else:
+                print("❌ Failed to get data.")
+                print(f"   Status: {data.get('status')}")
+                print(f"   Errors: {data.get('error')}")
+
         except Exception as e:
-            print(f"❌ Diagnostics failed: {e}")
-            return False
+            _LOGGER.error(f"Diagnostics failed: {e}")
+            print(f"❌ An unexpected error occurred: {e}")
+        finally:
+            if 'client' in locals() and client._is_connected:
+                await client.disconnect()
 
 async def main():
-    """Main function for the testing suite"""
+    """Main function to run the testing suite"""
     suite = BluPowTestingSuite()
     
     try:
-        suite.display_welcome()
-        
-        while True:
-            choice = input("Select test mode (1-6, or 'q' to quit): ").strip().lower()
-            
-            if choice == 'q' or choice == 'quit':
-                print("👋 Exiting BluPow Testing Suite")
-                break
-            elif choice == '1':
-                await suite.device_discovery_test()
-            elif choice == '2':
-                await suite.device_wake_test()
-            elif choice == '3':
-                await suite.proxy_optimization_test()
-            elif choice == '4':
-                await suite.comprehensive_analysis()
-            elif choice == '5':
-                await suite.quick_setup_assistant()
-            elif choice == '6':
-                await suite.current_device_diagnostics()
-            else:
-                print("❌ Invalid choice. Please select 1-6 or 'q' to quit.")
-            
-            print("\n" + "="*80)
-            input("Press Enter to continue...")
-            print()
-            
-    except KeyboardInterrupt:
-        print("\n❌ Testing interrupted by user")
-    except Exception as e:
-        _LOGGER.error(f"❌ Testing suite failed: {e}")
-        raise
+        await suite.run()
+    except (KeyboardInterrupt, EOFError):
+        print("\n👋 Exiting BluPow Testing Suite.")
+    finally:
+        # Ensure all async tasks are cancelled on exit
+        tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    try:
+        asyncio.run(main())
+    except Exception as e:
+        _LOGGER.error(f"❌ Testing suite failed: {e}")
+        raise 

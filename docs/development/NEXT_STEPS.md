@@ -1,3 +1,52 @@
+# Next Steps for BluPow Development
+
+**Updated:** 2025-06-19
+**Status:** **Data channel established!** We are now successfully receiving data frames from the Renogy device.
+
+The primary blocker has been resolved. The development focus now shifts from establishing a connection to correctly interpreting and utilizing the data within Home Assistant.
+
+---
+
+## 1. ✅ ~~Establish a Reliable Data Channel~~ (Completed)
+
+- **Original Problem:** The client was not receiving data, only Modbus "Acknowledge" frames.
+- **Solution:** A multi-faceted approach involving robust data buffering, fixing the test suite, and, most critically, **using a specific Modbus Device ID (e.g., 1) instead of the broadcast address (255)** in the command frame.
+- **Outcome:** The `BluPowClient` can now reliably connect and receive data packets.
+
+## 2. Map Parsed Data to Home Assistant Sensors (Current Task)
+
+- **Objective:** Integrate the data received from `BluPowClient` into the Home Assistant entity model.
+- **Current State:** The client receives a data dictionary, but the values are `null`. This indicates the data frame is arriving but may not be correctly parsed or the device is in a state where it's not reporting values (e.g., no solar power at night).
+- **Actions:**
+    - **Investigate Null Values:**
+        - Analyze the raw data buffer in `blupow_client.py` to see the actual byte array being returned.
+        - Cross-reference the received bytes with the `cyrils/renogy-bt` and official Renogy Modbus documentation to ensure the parser is looking at the correct byte offsets for each value.
+        - Test the device during different operational states (e.g., while charging, with a load) to see if values populate.
+    - **Update `coordinator.py`:**
+        - The `BluPowDataUpdateCoordinator` needs to be updated to correctly call `client.get_data()`.
+        - The coordinator should handle the `null` or error states gracefully, making sensors `unavailable` if necessary.
+    - **Update `sensor.py`:**
+        - Ensure the `BluPowSensor` entities correctly reference the data provided by the coordinator.
+        - Add any new sensors that are now available from the parsed data.
+        - Implement correct `device_class`, `unit_of_measurement`, and `state_class` for each sensor to integrate properly with Home Assistant's UI and Energy Dashboard.
+
+## 3. Refine Connection Management and Error Handling
+
+- **Objective:** Make the integration robust and stable for long-term use.
+- **Actions:**
+    - **Connection Stability:** Implement a connection retry mechanism with backoff in `coordinator.py` if the device becomes unavailable.
+    - **Error States:** Ensure that `BleakError` and other exceptions are caught gracefully and reported to the user through the UI.
+    - **Configuration:** Allow the Modbus `device_id` to be configured in the `config_flow.py` UI instead of being hardcoded, as it may vary between devices.
+
+## 4. Documentation and Cleanup
+
+- **Objective:** Finalize the integration for a beta release.
+- **Actions:**
+    - Update the main `README.md` with the latest findings and a more accurate description of the connection process.
+    - Add a "Troubleshooting" section for common issues like incorrect device IDs.
+    - Remove any leftover debugging code and finalize code comments.
+    - Create a pull request with all the changes for review.
+
 # Next Steps: Data Parsing and Sensor Validation
 
 ## 1. Current State & Goal
