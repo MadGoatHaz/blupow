@@ -1,18 +1,23 @@
 {
   "domain": "blupow",
   "name": "BluPow - Renogy Inverter Integration",
-  "version": "1.0.0",
-  "documentation": "https://github.com/madgoat/blupow/blob/main/README.md",
-  "issue_tracker": "https://github.com/madgoat/blupow/issues",
-  "codeowners": ["@madgoat"],
+  "version": "2.0.0",
+  "documentation": "https://github.com/MadGoatHaz/blupow",
+  "issue_tracker": "https://github.com/MadGoatHaz/blupow/issues",
+  "codeowners": ["@MadGoatHaz"],
   "dependencies": ["bluetooth"],
   "requirements": ["bleak>=0.21.0"],
   "iot_class": "local_polling",
   "config_flow": true,
+  "integration_type": "device",
+  "after_dependencies": ["bluetooth"],
   "bluetooth": [
     {
-      "connectable": true
+      "connectable": true,
+      "manufacturer_id": 65535,
+      "service_uuid": "0000fff0-0000-1000-8000-00805f9b34fb"
     }
-  ]
+  ],
+  "loggers": ["custom_components.blupow"]
 }
 
