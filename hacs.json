@@ -1,0 +1,11 @@
+{
+    "name": "BluPow - Renogy Inverter Integration",
+    "content_in_root": false,
+    "country": "US",
+    "domains": ["sensor"],
+    "homeassistant": "2024.1.0",
+    "hacs": "1.32.0",
+    "iot_class": "Local Polling",
+    "render_readme": true,
+    "persistent_directory": "data"
+} 
