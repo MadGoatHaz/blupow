@@ -77,7 +77,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
 
     def __init__(self, config_entry):
         """Initialize options flow."""
-        self.config_entry = config_entry
+        super().__init__()
+        # Don't set config_entry explicitly - it's handled by the parent class
 
     async def async_step_init(
         self, user_input: Optional[Dict[str, Any]] = None
