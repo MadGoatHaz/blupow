@@ -22,41 +22,15 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the BluPow sensor entities."""
-    try:
-        coordinator: BluPowDataUpdateCoordinator = entry.runtime_data
-        _LOGGER.info("Setting up BluPow sensors with coordinator: %s", coordinator)
-        
-        # Verify coordinator is properly initialized
-        if not coordinator:
-            _LOGGER.error("Coordinator is None, cannot set up sensors")
-            return
-        
-        # Ensure coordinator has data
-        if not hasattr(coordinator, 'data') or coordinator.data is None:
-            _LOGGER.warning("Coordinator data is None, initializing default data")
-            # This should trigger the coordinator's data property to initialize
-        
-        # Create sensors with comprehensive error handling
-        entities = []
-        for description in DEVICE_SENSORS:
-            try:
-                sensor = BluPowSensor(coordinator, description)
-                entities.append(sensor)
-                _LOGGER.debug("Created sensor: %s", description.key)
-            except Exception as err:
-                _LOGGER.error("Failed to create sensor %s: %s", description.key, err)
-                continue
-        
-        if entities:
-            async_add_entities(entities)
-            _LOGGER.info("Successfully added %d BluPow sensors", len(entities))
-        else:
-            _LOGGER.error("No BluPow sensors were created successfully")
-            
-    except Exception as err:
-        _LOGGER.error("Failed to set up BluPow sensors: %s", err)
-        raise
+    """Set up the BluPow sensor entities from a config entry."""
+    coordinator: BluPowDataUpdateCoordinator = entry.runtime_data
+    
+    entities = [
+        BluPowSensor(coordinator, description)
+        for description in DEVICE_SENSORS
+    ]
+    async_add_entities(entities)
+    _LOGGER.info("Added %d BluPow sensors", len(entities))
 
 
 class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity):
@@ -67,149 +41,26 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
         coordinator: BluPowDataUpdateCoordinator,
         description: SensorEntityDescription,
     ) -> None:
-        """Initialize the sensor with comprehensive error handling."""
-        try:
-            super().__init__(coordinator)
-            self.entity_description = description
-            
-            # Verify coordinator is available
-            if not coordinator:
-                _LOGGER.error("Coordinator is None for sensor %s", description.key)
-                raise ValueError("Coordinator is None")
-            
-            # Safe unique ID generation
-            if coordinator.ble_device:
-                self._attr_unique_id = f"{coordinator.ble_device.address}_{description.key}"
-                _LOGGER.debug("Generated unique ID: %s", self._attr_unique_id)
-            else:
-                _LOGGER.warning("BLE device not available, using fallback unique ID")
-                self._attr_unique_id = f"blupow_{description.key}"
-            
-            # Safe device info initialization
-            self._attr_device_info = self._create_device_info(coordinator)
-            
-            _LOGGER.info("Successfully initialized BluPow sensor: %s", description.key)
-            
-        except Exception as err:
-            _LOGGER.error("Failed to initialize BluPow sensor %s: %s", description.key, err)
-            raise
-
-    def _create_device_info(self, coordinator: BluPowDataUpdateCoordinator) -> DeviceInfo:
-        """Create device info with comprehensive error handling."""
-        try:
-            if not coordinator:
-                _LOGGER.warning("Creating device info with minimal data - no coordinator")
-                return DeviceInfo(
-                    identifiers={(DOMAIN, "blupow_fallback")},
-                    name="BluPow Device",
-                    manufacturer="BluPow",
-                    model="Unknown",
-                )
-            
-            if not coordinator.ble_device:
-                _LOGGER.warning("Creating device info with minimal data - no BLE device")
-                # Use the client address as identifier when BLE device is not available
-                device_id = coordinator.client.address if coordinator.client else "unknown"
-                return DeviceInfo(
-                    identifiers={(DOMAIN, device_id)},
-                    name="BluPow Device",
-                    manufacturer="BluPow",
-                    model="Unknown",
-                )
-            
-            device_name = coordinator.ble_device.name or "BluPow Device"
-            device_address = coordinator.ble_device.address or "unknown"
-            
-            _LOGGER.debug("Creating device info for %s (%s)", device_name, device_address)
-            
-            # Get model from coordinator data if available
-            model = "Unknown"
-            if coordinator and coordinator.data:
-                model = coordinator.data.get("model_number", "Unknown")
-
-            return DeviceInfo(
-                connections={("bluetooth", device_address)},
-                identifiers={(DOMAIN, device_address)},
-                name=device_name,
-                manufacturer="BluPow",
-                model=model,
-            )
-            
-        except Exception as err:
-            _LOGGER.error("Failed to create device info: %s", err)
-            return DeviceInfo(
-                identifiers={(DOMAIN, "blupow_error")},
-                name="BluPow Device",
-                manufacturer="BluPow",
-                model="Unknown",
-            )
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        
+        self._attr_unique_id = f"{coordinator.client.address}_{description.key}"
+        # The device_info is provided by the coordinator
+        self._attr_device_info = coordinator.device_info
 
     @property
     def native_value(self) -> Any:
-        """Return the state of the sensor with comprehensive error handling."""
-        try:
-            # Check if coordinator exists
-            if not self.coordinator:
-                _LOGGER.warning("No coordinator available for sensor %s", self.entity_description.key)
-                return None
-            
-            # Check if coordinator data exists and is accessible
-            try:
-                data = self.coordinator.data
-                if data is None:
-                    _LOGGER.debug("Coordinator data is None for sensor %s", self.entity_description.key)
-                    return None
-                
-                # Safe data access
-                value = data.get(self.entity_description.key)
-                _LOGGER.debug("Sensor %s value: %s (type: %s)", 
-                             self.entity_description.key, value, type(value))
-                
-                # Check for connection issues and show helpful error states
-                connection_status = data.get("connection_status", "unknown")
-                error_count = data.get("error_count", 0)
-                
-                if connection_status == "error" and error_count > 5:
-                    # Show "Device Not Found" instead of None for user clarity
-                    if "not found" in str(data.get("last_error", "")).lower():
-                        return "Device Not Found"
-                    elif "connection slot" in str(data.get("last_error", "")).lower():
-                        return "Device Not Discoverable"
-                    else:
-                        return "Connection Error"
-                
-                return value
-                
-            except AttributeError as attr_err:
-                _LOGGER.error("Coordinator data attribute error for sensor %s: %s", 
-                             self.entity_description.key, attr_err)
-                return None
-            except Exception as data_err:
-                _LOGGER.error("Error accessing coordinator data for sensor %s: %s", 
-                             self.entity_description.key, data_err)
-                return None
-            
-        except Exception as err:
-            _LOGGER.error("Error getting native value for sensor %s: %s", 
-                         self.entity_description.key, err)
-            return None
+        """Return the state of the sensor."""
+        if self.coordinator.data:
+            return self.coordinator.data.get(self.entity_description.key)
+        return None
 
     @property
     def available(self) -> bool:
-        """Return if the entity is available with error handling."""
-        try:
-            if not self.coordinator:
-                _LOGGER.debug("No coordinator available for availability check")
-                return False
-            
-            available = self.coordinator.last_update_success
-            _LOGGER.debug("Sensor %s availability: %s", self.entity_description.key, available)
-            return available
-            
-        except Exception as err:
-            _LOGGER.error("Error checking availability for sensor %s: %s", 
-                         self.entity_description.key, err)
-            return False
+        """Return if the entity is available."""
+        return self.coordinator.last_update_success and \
+               self.coordinator.data.get('connection_status') == 'connected'
 
     async def async_added_to_hass(self) -> None:
         """Handle entity added to hass with logging."""

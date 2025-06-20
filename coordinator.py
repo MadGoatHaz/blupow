@@ -9,174 +9,64 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.components import bluetooth
 
 from .blupow_client import BluPowClient
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
-    """Class to manage fetching BluPow data with comprehensive error handling."""
+    """Class to manage fetching BluPow data from the device."""
 
     def __init__(self, hass: HomeAssistant, client: BluPowClient, update_interval: int) -> None:
-        """Initialize with comprehensive error handling."""
-        try:
-            super().__init__(
-                hass,
-                _LOGGER,
-                name="BluPow",
-                update_interval=timedelta(seconds=update_interval),
-            )
-            
-            self.client = client
-            # Get BLE device from Home Assistant's bluetooth integration
-            self.ble_device = bluetooth.async_ble_device_from_address(
-                hass, client.address.upper(), connectable=True
-            ) if client else None
-            
-            _LOGGER.info("BluPow coordinator initialized successfully")
-            _LOGGER.debug("BLE device: %s", self.ble_device)
-            
-        except Exception as err:
-            _LOGGER.error("Failed to initialize BluPow coordinator: %s", err)
-            raise
+        """Initialize the data update coordinator."""
+        self.client = client
+        self.ble_device = bluetooth.async_ble_device_from_address(
+            hass, client.address.upper(), connectable=True
+        ) if client else None
 
-    def _get_default_data(self) -> Dict[str, Any]:
-        """Get default data structure."""
-        return {
-            "model_number": "Unknown",
-            "battery_voltage": None,
-            "solar_voltage": None,
-            "battery_current": None,
-            "solar_current": None,
-            "battery_soc": None,
-            "battery_temp": None,
-            "solar_power": None,
-            "connection_status": "disconnected",
-            "last_update": None,
-            "error_count": 0,
-        }
+        super().__init__(
+            hass,
+            _LOGGER,
+            name=DOMAIN,
+            update_interval=timedelta(seconds=update_interval),
+        )
+        _LOGGER.info("BluPow coordinator initialized for device: %s", self.client.address)
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """Update data via BluPow client with comprehensive error handling."""
+        """
+        Fetch data from the BluPow client.
+        
+        This method is called by the DataUpdateCoordinator to refresh the data.
+        It calls the get_data() method of the client, which handles connection,
+        data retrieval, and formatting.
+        """
+        _LOGGER.debug("Starting data update for %s", self.client.address)
         try:
-            _LOGGER.info("Starting BluPow data update")
-            
-            # Start with default data structure
-            current_data = self.data if self.data else self._get_default_data()
-            
-            # Check if client is available
-            if not self.client:
-                _LOGGER.error("BluPow client not available")
-                current_data.update({
-                    "connection_status": "error",
-                    "last_update": "error",
-                    "error_count": current_data.get("error_count", 0) + 1,
-                    "last_error": "Client not available"
-                })
-                return current_data
-            
-            # Check device availability before attempting data retrieval
-            try:
-                is_available = await self.client.check_device_availability()
-                if not is_available:
-                    _LOGGER.warning("Device %s is not available", self.client.address)
-                    current_data.update({
-                        "connection_status": "unavailable",
-                        "last_update": "unavailable",
-                        "error_count": current_data.get("error_count", 0) + 1,
-                        "last_error": "Device not available"
-                    })
-                    return current_data
-            except Exception as err:
-                _LOGGER.debug("Could not check device availability: %s", err)
-                # Continue anyway, the main connection attempt will handle this
-            
-            # Attempt to fetch data
-            _LOGGER.debug("Attempting to fetch data from BluPow device")
             data = await self.client.get_data()
-            
-            if data and isinstance(data, dict):
-                # Check if we got actual data or just error data
-                if "error_message" in data:
-                    _LOGGER.warning("Received error data from device: %s", data.get("error_message"))
-                    current_data.update({
-                        "connection_status": "error",
-                        "last_update": "error",
-                        "error_count": current_data.get("error_count", 0) + 1,
-                        "last_error": data.get("error_message", "Unknown error")
-                    })
-                else:
-                    # Update data with new values
-                    current_data.update(data)
-                    current_data.update({
-                        "connection_status": "connected",
-                        "last_update": "success",
-                        "error_count": 0
-                    })
-                    
-                    _LOGGER.info("Successfully fetched BluPow data: %s", list(data.keys()))
-                    _LOGGER.debug("Updated data keys: %s", list(data.keys()))
-                
-            else:
-                _LOGGER.warning("No valid data received from BluPow device")
-                current_data.update({
-                    "connection_status": "no_data",
-                    "last_update": "no_data",
-                    "error_count": current_data.get("error_count", 0) + 1
-                })
-                
-            return current_data
-            
+            _LOGGER.debug("Data received from client: %s", data.keys())
+            return data
         except Exception as err:
-            _LOGGER.error("Error fetching BluPow data: %s", err)
-            current_data = self.data if self.data else self._get_default_data()
-            current_data.update({
-                "connection_status": "error",
-                "last_update": "error",
-                "error_count": current_data.get("error_count", 0) + 1,
-                "last_error": str(err)
-            })
-            return current_data
+            _LOGGER.error("Error fetching BluPow data: %s", err, exc_info=True)
+            # In case of an unexpected error, return the offline structure
+            # The client should handle most errors and return an offline dict,
+            # but this is a fallback.
+            return self.client._get_offline_data()
 
-    def get_device_info(self) -> Dict[str, Any]:
-        """Get device information with error handling."""
-        try:
-            if not self.ble_device:
-                return {
-                    "name": "BluPow Device",
-                    "address": "unknown",
-                    "model": "Unknown",
-                }
-            
-            current_data = self.data if self.data else self._get_default_data()
-            return {
-                "name": self.ble_device.name or "BluPow Device",
-                "address": self.ble_device.address or "unknown",
-                "model": current_data.get("model_number", "Unknown"),
-            }
-            
-        except Exception as err:
-            _LOGGER.error("Error getting device info: %s", err)
-            return {
-                "name": "BluPow Device",
-                "address": "unknown",
-                "model": "Unknown",
-            }
+    @property
+    def device_info(self) -> Dict[str, Any]:
+        """Return basic device information."""
+        model = "Unknown"
+        if self.data and self.data.get('model_number'):
+            model = self.data.get('model_number')
 
-    def get_connection_status(self) -> str:
-        """Get current connection status."""
-        try:
-            current_data = self.data if self.data else self._get_default_data()
-            return current_data.get("connection_status", "unknown")
-        except Exception as err:
-            _LOGGER.error("Error getting connection status: %s", err)
-            return "error"
+        name = "BluPow Device"
+        if self.ble_device and self.ble_device.name:
+            name = self.ble_device.name
 
-    def get_error_count(self) -> int:
-        """Get current error count."""
-        try:
-            current_data = self.data if self.data else self._get_default_data()
-            return current_data.get("error_count", 0)
-        except Exception as err:
-            _LOGGER.error("Error getting error count: %s", err)
-            return 0
+        return {
+            "identifiers": {(DOMAIN, self.client.address)},
+            "name": name,
+            "model": model,
+            "manufacturer": "Renogy",
+        }
 
