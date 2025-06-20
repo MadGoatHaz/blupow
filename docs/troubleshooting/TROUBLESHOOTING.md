@@ -242,4 +242,48 @@ docker exec -it homeassistant env PYTHONPATH=/config python3 /config/custom_comp
 Contact support if:
 1. The diagnostic tool never finds the device, and you have tried all solutions in this guide.
 2. The diagnostic tool finds the device, but connection tests always fail.
-3. Connection works but data is incorrect. 
+3. Connection works but data is incorrect.
+
+---
+
+## 1. Installation & Setup Issues
+
+### **Issue: "Config flow could not be loaded" error in Home Assistant.**
+
+- **Symptom:** When adding the BluPow integration, Home Assistant displays a "Config flow could not be loaded" error, and logs show messages like `Setup failed for custom integration 'blupow': Unable to import component`.
+- **Cause:** This is often due to Home Assistant's security features, particularly AppArmor, restricting Bluetooth access for the Docker container.
+- **Solution:**
+    1.  **Disable AppArmor for the Home Assistant Container:** The most reliable solution is to disable AppArmor specifically for the Home Assistant Docker container.
+        -   **Command:** `sudo docker run ... --security-opt apparmor=unconfined ...`
+        -   Refer to the `CONTAINER_SETUP_GUIDE.md` for the full `docker run` command.
+    2.  **Verify Bluetooth Passthrough:** Ensure your host's Bluetooth adapter is correctly passed through to the container.
+
+### **Issue: `ModuleNotFoundError: No module named 'custom_components.blupow.backup'`**
+
+- **Symptom:** Home Assistant fails to start, and the logs show a `ModuleNotFoundError` for a `.backup` module.
+- **Cause:** The `scripts/deploy.sh` script was creating backups inside the `custom_components` directory, which Home Assistant tries to load as a separate integration.
+- **Solution:**
+    1.  Update the `deploy.sh` script to the latest version. The backup location has been moved outside of the `custom_components` directory.
+    2.  Manually remove any `blupow.backup.*` directories from your `/config/custom_components/` folder within the Home Assistant container or mapped volume.
+
+---
+
+## 2. Device Connectivity & Data Issues
+
+### **Issue: Device Acknowledges Command but Sends No Data (Modbus Exception Code 5)**
+
+- **Symptom:** The integration connects to the Renogy device, and logs indicate a command is sent. However, the only response received is a short byte array like `ff8305e0c3`. No data is parsed, and sensors do not update.
+- **Analysis:** The response `ff8305e0c3` is a Modbus RTU Exception Frame.
+    - `ff`: The broadcast address, indicating the response is from the device.
+    - `83`: This is the function code `03` (Read Holding Registers) with the most significant bit set (`0x80 + 0x03`), which signals an exception.
+    - `05`: This is the Exception Code, which means "Acknowledge". The device has accepted the request and is processing it, but it is not ready to respond with data. This can be misleading, as it often indicates a "busy" state or an issue with the command format.
+- **Cause:** The Renogy device requires commands to be addressed to its specific **Modbus Device ID**, even in a single-device setup. Using the broadcast address (`0xFF` or `255`) causes the device to acknowledge the request but not return a data payload.
+- **Solution:**
+    1.  **Use a Specific Device ID:** The `blupow_client` has been updated to use a default device ID of `1`.
+    2.  **Future Enhancement:** In upcoming versions, you will be able to configure this Device ID in the integration's setup wizard. Most Renogy devices use a default ID of `1`, `16`, or `17`. If you continue to have issues, you may need to find the specific ID for your device.
+
+### **Issue: No Renogy devices are discovered.**
+
+- **Symptom:** The integration fails to find your Renogy device, even though it is powered on and within range.
+
+This guide provides solutions to common issues encountered during the setup and operation of the BluPow integration. 

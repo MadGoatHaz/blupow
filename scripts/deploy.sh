@@ -142,6 +142,7 @@ deploy_integration() {
     
     CUSTOM_COMPONENTS_DIR="$CONFIG_PATH/custom_components"
     INTEGRATION_DIR="$CUSTOM_COMPONENTS_DIR/$INTEGRATION_NAME"
+    BACKUP_DIR="$CONFIG_PATH/backups"
     
     # Create custom_components directory if it doesn't exist
     if [[ ! -d "$CUSTOM_COMPONENTS_DIR" ]]; then
@@ -149,10 +150,16 @@ deploy_integration() {
         mkdir -p "$CUSTOM_COMPONENTS_DIR"
     fi
     
+    # Create backups directory if it doesn't exist
+    if [[ ! -d "$BACKUP_DIR" ]]; then
+        print_info "Creating backups directory..."
+        mkdir -p "$BACKUP_DIR"
+    fi
+    
     # Create integration directory
     if [[ -d "$INTEGRATION_DIR" ]]; then
         print_warning "Existing integration found. Backing up..."
-        mv "$INTEGRATION_DIR" "$INTEGRATION_DIR.backup.$(date +%Y%m%d_%H%M%S)"
+        mv "$INTEGRATION_DIR" "$BACKUP_DIR/$INTEGRATION_NAME.backup.$(date +%Y%m%d_%H%M%S)"
     fi
     
     mkdir -p "$INTEGRATION_DIR"

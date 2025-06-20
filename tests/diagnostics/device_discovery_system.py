@@ -139,32 +139,45 @@ class BluPowDeviceDiscoverySystem:
                      "Tertiary proxy - available for testing", "available", None),
         ]
         
-    async def comprehensive_scan(self, duration: float = 20.0) -> Dict[str, DeviceInfo]:
-        """Perform comprehensive device discovery"""
+    async def comprehensive_scan(self, duration: float = 20.0, total_timeout: float = 60.0) -> Dict[str, DeviceInfo]:
+        """Perform comprehensive device discovery with retries until a Renogy device is found."""
         _LOGGER.info("🚀 Starting BluPow Comprehensive Device Discovery System")
         _LOGGER.info("="*80)
-        _LOGGER.info(f"⏱️  Scanning for {duration} seconds with detailed analysis...")
+        _LOGGER.info(f"⏱️  Scanning for Renogy devices for up to {total_timeout} seconds...")
         
         start_time = time.time()
         
-        try:
-            # Discover devices with advertisement data
-            discovered = await BleakScanner.discover(timeout=duration, return_adv=True)
-            
-            scan_time = time.time() - start_time
-            _LOGGER.info(f"📡 Discovered {len(discovered)} devices in {scan_time:.1f} seconds")
-            
-            # Analyze each device
-            for device, adv_data in discovered.values():
-                device_info = self._analyze_device(device, adv_data)
-                self.discovered_devices[device.address] = device_info
+        while time.time() - start_time < total_timeout:
+            try:
+                # Discover devices with advertisement data
+                discovered = await BleakScanner.discover(timeout=duration, return_adv=True)
                 
-                if device_info.is_proxy:
-                    self.proxy_devices[device.address] = device_info
+                scan_time = time.time() - start_time
+                _LOGGER.info(f"📡 Discovered {len(discovered)} devices in this scan cycle ({scan_time:.1f}s elapsed)")
+                
+                # Analyze each device
+                renogy_found = False
+                for device, adv_data in discovered.values():
+                    device_info = self._analyze_device(device, adv_data)
+                    self.discovered_devices[device.address] = device_info
                     
-        except Exception as e:
-            _LOGGER.error(f"❌ Discovery failed: {e}")
-            
+                    if device_info.is_renogy:
+                        renogy_found = True
+                    
+                    if device_info.is_proxy:
+                        self.proxy_devices[device.address] = device_info
+                
+                if renogy_found:
+                    _LOGGER.info("✅ Found at least one Renogy device. Proceeding with analysis.")
+                    return self.discovered_devices
+                        
+            except Exception as e:
+                _LOGGER.error(f"❌ Discovery cycle failed: {e}")
+
+            _LOGGER.info("... No Renogy devices found yet, rescanning ...")
+            await asyncio.sleep(5) # Wait 5 seconds before next scan
+
+        _LOGGER.warning("⚠️  Timed out searching for Renogy devices.")
         return self.discovered_devices
     
     def _analyze_device(self, device: BLEDevice, adv_data: AdvertisementData) -> DeviceInfo:
@@ -353,10 +366,9 @@ class BluPowDeviceDiscoverySystem:
             try:
                 start_time = time.time()
                 
-                # Create BLE device for connection
-                device = BLEDevice(address, device_info.name)
-                
-                async with BleakClient(device, timeout=10.0) as client:
+                # BleakClient can take an address string or a BLEDevice object.
+                # Using address string directly is simpler here.
+                async with BleakClient(address, timeout=10.0) as client:
                     if client.is_connected:
                         connection_time = time.time() - start_time
                         device_info.connectable = True
@@ -471,9 +483,13 @@ class BluPowDeviceDiscoverySystem:
         
         for i, device in enumerate(best_devices, 1):
             status = "✅ READY" if device.connectable else "⚠️  NEEDS TESTING"
+            device_description = 'Unknown'
+            if device.device_type:
+                device_description = RENOGY_DEVICE_PATTERNS.get(device.device_type, {}).get('description', 'Unknown')
+            
             recommendations.extend([
                 f"#{i} {device.name} ({device.address})",
-                f"   📱 Type: {RENOGY_DEVICE_PATTERNS.get(device.device_type, {}).get('description', 'Unknown')}",
+                f"   📱 Type: {device_description}",
                 f"   📶 Signal: {device.rssi} dBm",
                 f"   🏆 Score: {device.recommendation_score}/100",
                 f"   🔌 Status: {status}",
