@@ -23,10 +23,10 @@ from typing import Dict, List, Optional, Any
 
 # Import our testing systems
 try:
-    from device_discovery_system import BluPowDeviceDiscoverySystem
-    from device_wake_system import DeviceWakeSystem, TARGET_DEVICE
-    from blupow_client import BluPowClient
-    from const import RENOGY_SERVICE_UUID, RENOGY_TX_CHAR_UUID, RENOGY_RX_CHAR_UUID
+    from custom_components.blupow.device_discovery_system import BluPowDeviceDiscoverySystem
+    from custom_components.blupow.device_wake_system import DeviceWakeSystem, TARGET_DEVICE
+    from custom_components.blupow.blupow_client import BluPowClient
+    from custom_components.blupow.const import RENOGY_SERVICE_UUID, RENOGY_TX_CHAR_UUID, RENOGY_RX_CHAR_UUID
 except ImportError as e:
     print(f"Error importing BluPow modules: {e}")
     print("Please ensure you're running from the BluPow directory")

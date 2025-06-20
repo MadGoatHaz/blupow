@@ -223,6 +223,16 @@ main() {
     cp -v *.py "$BLUPOW_DIR/"
     cp -v *.json "$BLUPOW_DIR/"
     
+    # Copy all test and diagnostic files
+    echo "🧪 Copying testing and diagnostic files..."
+    cp -v blupow_testing_suite.py "$BLUPOW_DIR/"
+    cp -v device_discovery_system.py "$BLUPOW_DIR/"
+    cp -v device_wake_system.py "$BLUPOW_DIR/"
+    cp -v connection_test.py "$BLUPOW_DIR/"
+    cp -v proxy_test.py "$BLUPOW_DIR/"
+    cp -v quick_test.py "$BLUPOW_DIR/"
+    cp -v simple_test.py "$BLUPOW_DIR/"
+    
     # Copy translations directory if it exists
     if [ -d "translations" ]; then
         echo "🌐 Copying translations..."
