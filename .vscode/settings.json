@@ -1,0 +1,5 @@
+{
+    "python.analysis.extraPaths": [
+        "/home/madgoat/opt/homeassistant/config"
+    ]
+} 

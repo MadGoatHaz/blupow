@@ -17,7 +17,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
 try:
@@ -255,39 +255,20 @@ class DeviceWakeSystem:
                     if device.address.upper() == self.target_address.upper():
                         device_found = True
                         rssi = getattr(device, 'rssi', None)
-                        _LOGGER.info(f"   ✅ Device woke up! RSSI: {rssi}")
-                        
-                        # Try immediate connection while awake
-                        try:
-                            async with BleakClient(device, timeout=15.0) as client:
-                                if client.is_connected:
-                                    _LOGGER.info("   🔌 Successfully connected while awake!")
-                                    return WakeAttempt(
-                                        timestamp=datetime.now(),
-                                        strategy='deep_sleep_wake',
-                                        duration=time.time() - start_time,
-                                        device_found=True,
-                                        connectable=True,
-                                        rssi=rssi,
-                                        error=None,
-                                        notes=["Device woke from deep sleep", "Connection successful"]
-                                    )
-                        except Exception as e:
-                            _LOGGER.warning(f"   ⚠️  Device awake but connection failed: {e}")
-                        
-                        detection_attempts.append(rssi)
+                        _LOGGER.info(f"   ✅ Device found in attempt {attempt+1}! RSSI: {rssi}")
+                        detection_attempts.append((attempt+1, rssi))
                         break
                 
                 if not device_found:
-                    _LOGGER.info(f"   💤 Device still sleeping (attempt {attempt+1})")
+                    _LOGGER.info(f"   ❌ No device found in attempt {attempt+1}")
                     
             except Exception as e:
                 _LOGGER.error(f"   ❌ Wake attempt {attempt+1} failed: {e}")
             
-            # Wait between attempts
-            if attempt < 4:
-                _LOGGER.info("   ⏸️  Waiting 60 seconds before next attempt...")
-                await asyncio.sleep(60.0)
+            # Wait between attempts - reduced from 60 to 15 seconds
+            if attempt < 4:  # Don't wait after the last attempt
+                _LOGGER.info(f"   ⏸️ Waiting 15 seconds before next attempt...")
+                await asyncio.sleep(15.0)
         
         duration = time.time() - start_time
         device_found = len(detection_attempts) > 0
@@ -303,7 +284,7 @@ class DeviceWakeSystem:
             duration=duration,
             device_found=device_found,
             connectable=False,
-            rssi=max(detection_attempts) if detection_attempts else None,
+            rssi=max(rssi for _, rssi in detection_attempts) if detection_attempts else None,
             error=None,
             notes=notes
         )

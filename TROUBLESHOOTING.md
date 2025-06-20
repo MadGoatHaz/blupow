@@ -22,19 +22,47 @@ We have a built-in diagnostic tool to help you. Run it from your Home Assistant'
 **Note**: This script must be run in an environment where the Home Assistant packages are installed. If you are using Home Assistant OS or a supervised installation, use the "Terminal & SSH" add-on.
 
 ```bash
-python3 blupow_testing_suite.py
+docker exec -it homeassistant env PYTHONPATH=/config python3 /config/custom_components/blupow/blupow_testing_suite.py
 ```
 
 When prompted, select option `6` for **Current Device Diagnostics**.
 
 The tool will tell you if the device is visible and if it can connect.
 
-### ⚙️ Step 2: Common Causes & Solutions
+### 🔒 Step 2: Check for Container Security Issues (NEW)
+
+**If you see AppArmor/DBus errors like:**
+```
+[org.freedesktop.DBus.Error.AccessDenied] An AppArmor policy prevents this sender from sending this message to this recipient
+```
+
+This indicates a **container security restriction** preventing Bluetooth access. This is common in Docker-based Home Assistant installations.
+
+**Solutions:**
+1. **Use Home Assistant OS/Supervised**: These have proper Bluetooth integration built-in
+2. **Docker Privileged Mode**: Add `--privileged` to your Docker run command (security risk)
+3. **Docker Device Access**: Add `--device /dev/bus/usb` and appropriate Bluetooth devices
+4. **Host Network Mode**: Use `--network host` in Docker (reduces container isolation)
+
+**For Docker Compose users**, add to your `docker-compose.yml`:
+```yaml
+services:
+  homeassistant:
+    privileged: true
+    # OR specific device access:
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/bus/usb:/dev/bus/usb
+    network_mode: host
+```
+
+### ⚙️ Step 3: Common Causes & Solutions
 
 If the diagnostic tool fails, here are the likely reasons why:
 
 | Cause                                   | Solution                                                                                                                                                                       |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Container Security (AppArmor)**       | See Step 2 above - modify Docker configuration for Bluetooth access                                                                                                           |
 | **Device is Off**                       | Ensure your Renogy charge controller or device has power. Check the physical display.                                                                                          |
 | **Bluetooth is Off/Asleep**             | Some Renogy devices have a power-saving mode that disables Bluetooth. Try connecting during peak sun hours when the device is most active.                                       |
 | **Device is Paired Elsewhere**          | Your Renogy device can only connect to **one** thing at a time. **Disconnect the official Renogy app on your phone** or any other device that might be connected to it.         |
@@ -141,6 +169,30 @@ top
 free -h
 # Check Bluetooth processes
 ps aux | grep blue
+```
+
+---
+
+## Diagnostic Methodology (For Developers)
+
+### How We Diagnosed the Container Issue
+
+1. **Modified `deploy.sh`** to copy testing scripts into the container
+2. **Fixed Python imports** to use absolute paths: `custom_components.blupow.*`
+3. **Set PYTHONPATH** when running: `env PYTHONPATH=/config python3 script.py`
+4. **Discovered AppArmor restrictions** through systematic testing
+
+### Running Tests in Container
+
+```bash
+# Deploy integration with testing tools
+./deploy.sh
+
+# Run comprehensive testing suite
+docker exec -it homeassistant env PYTHONPATH=/config python3 /config/custom_components/blupow/blupow_testing_suite.py
+
+# Quick device check
+docker exec -it homeassistant env PYTHONPATH=/config python3 /config/custom_components/blupow/quick_test.py
 ```
 
 ---
