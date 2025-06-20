@@ -18,7 +18,8 @@ blupow/
 │   ├── 📂 development/          # Developer documentation
 │   │   ├── CONTEXT_GUIDE.md
 │   │   ├── SESSION_SUMMARY.md
-│   │   └── TESTING_GUIDE.md
+│   │   ├── TESTING_GUIDE.md
+│   │   └── NEXT_STEPS.md
 │   ├── CURRENT_STATUS.md
 │   └── DOCUMENTATION.md
 ├── 📂 info/                     # Reference information
@@ -96,68 +97,8 @@ Organized by purpose and audience:
 - **`CONTEXT_GUIDE.md`** - Developer context and background
 - **`SESSION_SUMMARY.md`** - Development session summaries
 - **`TESTING_GUIDE.md`** - Testing procedures and methodologies
+- **`NEXT_STEPS.md`** - Development plan for the next coding session
 
 ### Testing Framework (`tests/`)
 
-#### Diagnostics (`tests/diagnostics/`)
-- **`blupow_testing_suite.py`** - Comprehensive testing suite
-- **`device_discovery_system.py`** - Device discovery testing
-- **`device_wake_system.py`** - Device wake-up testing
-- **`monitor_progress.py`** - Progress monitoring tools
-
-#### Integration Tests (`tests/integration/`)
-- **`connection_test.py`** - Connection testing
-- **`proxy_test.py`** - Bluetooth proxy testing
-- **`quick_test.py`** - Quick diagnostic tests
-- **`simple_test.py`** - Simple functionality tests
-
-### Scripts (`scripts/`)
-- **`deploy.sh`** - Automated deployment to Home Assistant
-- **`setup_container_bluetooth.sh`** - Container Bluetooth setup
-
-### Reference Information (`info/`)
-- **`AppArmor Info.txt`** - Comprehensive AppArmor security reference
-
-### Results (`results/`)
-- Test results, logs, and analysis outputs
-
-## 🚀 Usage Patterns
-
-### For Users
-1. **Setup**: Use `scripts/setup_container_bluetooth.sh`
-2. **Deploy**: Use `scripts/deploy.sh`
-3. **Troubleshooting**: Check `docs/troubleshooting/TROUBLESHOOTING.md`
-4. **Testing**: Run `tests/diagnostics/blupow_testing_suite.py`
-
-### For Developers
-1. **Context**: Read `docs/development/CONTEXT_GUIDE.md`
-2. **Testing**: Use files in `tests/` directory
-3. **Documentation**: Update files in `docs/` directory
-4. **Reference**: Check `info/` directory for technical details
-
-### For Home Assistant
-1. **Core files** remain in root for proper integration loading
-2. **Manifest** and **strings** define integration metadata
-3. **Platforms** (sensor.py) provide entity functionality
-
-## 🔄 Maintenance
-
-### Adding New Features
-- Tests go in appropriate `tests/` subdirectory
-- Documentation goes in appropriate `docs/` subdirectory
-- Reference materials go in `info/`
-
-### File Naming Conventions
-- **Snake_case** for Python files
-- **UPPER_CASE** for documentation files
-- **Descriptive names** that indicate purpose
-- **Directory organization** by function, not file type
-
-### Git Management
-- Core integration files tracked in root
-- Organized structure makes diffs cleaner
-- Easier to find and maintain specific functionality
-
----
-
-This structure provides clear separation of concerns while maintaining Home Assistant integration requirements. 
+#### Diagnostics (`

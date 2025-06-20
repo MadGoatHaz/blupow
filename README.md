@@ -88,7 +88,7 @@ tests/diagnostics/blupow_testing_suite.py
 ✅ **FULLY FUNCTIONAL**: Core integration, device discovery, sensor creation, and deployment are all working.
 ✅ **RESOLVED**: Container Bluetooth access issues (AppArmor, permissions) are fixed.
 ✅ **RESOLVED**: `Config flow could not be loaded` error is fixed.
-🚀 **Next**: Automated HACS integration with setup wizard
+🚀 **Next**: Parse raw sensor data to provide real values. See **[Next Steps Guide](docs/development/NEXT_STEPS.md)**.
 
 ## ✨ Recent Achievements
 - **Deployment Success**: Corrected deployment process by copying files to the correct Home Assistant `custom_components` directory.
