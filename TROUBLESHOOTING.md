@@ -17,7 +17,9 @@ This means your Home Assistant instance cannot "see" the Renogy device via Bluet
 
 ### ✅ Step 1: Run the Diagnostic Tool
 
-We have a built-in diagnostic tool to help you. Run it from your Home Assistant's terminal or a terminal with access to the codebase:
+We have a built-in diagnostic tool to help you. Run it from your Home Assistant's terminal or a terminal with access to the codebase.
+
+**Note**: This script must be run in an environment where the Home Assistant packages are installed. If you are using Home Assistant OS or a supervised installation, use the "Terminal & SSH" add-on.
 
 ```bash
 python3 blupow_testing_suite.py

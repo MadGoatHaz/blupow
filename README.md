@@ -33,7 +33,10 @@ If you are experiencing issues, please start with our comprehensive troubleshoot
 
 **➡️ Read the Troubleshooting Guide: [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)**
 
-The first step in the guide is to run the diagnostic tool:
+The first step in the guide is to run the diagnostic tool.
+
+**Note**: This script must be run in an environment where the Home Assistant packages are installed. If you are using Home Assistant OS or a supervised installation, use the "Terminal & SSH" add-on.
+
 ```bash
 python3 blupow_testing_suite.py
 ```
