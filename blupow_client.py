@@ -2,7 +2,6 @@
 BluPow BLE Client for Home Assistant Integration - Enhanced Renogy Protocol
 
 Based on cyrils/renogy-bt: Direct connection without pairing, enhanced device discovery
-Supports ESPHome Bluetooth Proxy for extended range
 """
 
 import asyncio
@@ -16,7 +15,6 @@ from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakDeviceNotFoundError, BleakError
 from bleak.backends.device import BLEDevice
 from homeassistant.core import HomeAssistant
-from bleak_esphome.backend.device import ESPHomeBLEDevice
 
 from .const import (
     RENOGY_SERVICE_UUID,
@@ -74,333 +72,234 @@ class EnvironmentInfo:
 class BluPowClient:
     """Enhanced BluPow client with proper Renogy protocol implementation"""
     
-    def __init__(self, address: str, hass: HomeAssistant):
-        self.address = address
-        self.hass = hass
-        self.name = address  # Default to address until device is found
-        self.client: Optional[BleakClient] = None
-        self.environment = EnvironmentInfo()
-        self._connection_attempts = 0
+    def __init__(self, mac_address: str):
+        self.mac_address = mac_address
+        self._client: Optional[BleakClient] = None
+        self._device_name = None
         self._last_data = {}
-        self._is_connected = False
-        self._ble_device: Optional[BLEDevice] = None
-        self._buffer = bytearray()
-        self.device_id = 1 # Default device ID
-        self._new_data_event = asyncio.Event()
-
-        # ESPHome Bluetooth Proxy support
-        self._proxy_client: Optional[BleakClient] = None
-        self._is_proxy_connected = False
+        self._connected = False
+        self._logger = logging.getLogger(__name__)
         
-        _LOGGER.info(f"Environment detected: {self.environment}")
-        _LOGGER.info(f"BluPow client initialized for address: {self.address} - Environment: {self.environment}")
+        # BLE Service and Characteristic UUIDs (from Renogy BT-2 protocol)
+        self._service_uuid = "0000ffd0-0000-1000-8000-00805f9b34fb"
+        self._tx_char_uuid = "0000ffd1-0000-1000-8000-00805f9b34fb"  # Write to device
+        self._rx_char_uuid = "0000fff1-0000-1000-8000-00805f9b34fb"  # Notifications from device
         
-    @property
-    def is_connected(self) -> bool:
-        return self._is_connected or self._is_proxy_connected
-    
-    async def connect(self, ble_device: BLEDevice) -> bool:
-        """Connect to the BLE device."""
-        self._ble_device = ble_device
-        _LOGGER.info(f"🔗 Connecting to Renogy device: {self._ble_device.name} ({self._ble_device.address})")
-
-        if isinstance(self._ble_device, ESPHomeBLEDevice):
-            _LOGGER.info("ESPHome device detected, using proxy connection.")
-            self._proxy_client = BleakClient(self._ble_device)
-            try:
-                await self._proxy_client.connect()
-                self._is_proxy_connected = self._proxy_client.is_connected
-                _LOGGER.info(f"Proxy connection status: {self._is_proxy_connected}")
-            except Exception as e:
-                _LOGGER.error(f"Failed to connect via ESPHome proxy: {e}")
-                self._is_proxy_connected = False
-        else:
-            _LOGGER.info("No ESPHome proxy, using standard BleakClient.")
-            self.client = BleakClient(self._ble_device)
-            try:
-                await self.client.connect()
-                self._is_connected = self.client.is_connected
-                _LOGGER.info(f"Standard connection status: {self._is_connected}")
-            except Exception as e:
-                _LOGGER.error(f"Failed to connect via standard client: {e}")
-                self._is_connected = False
+        # Response handling
+        self._response_data = bytearray()
+        self._response_received = False
+        self._response_timeout = 3.0
         
-        if not self.is_connected:
-            _LOGGER.error("Failed to establish any connection to the device.")
-            return False
+        # Renogy protocol constants
+        self._device_id = 255  # Broadcast address for standalone devices
+        
+        # Charging status mapping (fixed missing map)
+        self._charging_status_map = {
+            0: "Not charging",
+            1: "Float", 
+            2: "Boost",
+            3: "Equalization",
+            4: "MPPT",
+            5: "Absorption",
+            6: "Bulk"
+        }
 
-        _LOGGER.info("Connection successful. Starting notification handler.")
-        await self.start_notifications()
-        return True
+    def _calculate_crc(self, data: bytes) -> int:
+        """Calculate Modbus CRC16 for command validation"""
+        crc = 0xFFFF
+        for byte in data:
+            crc ^= byte
+            for _ in range(8):
+                if crc & 0x0001:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc >>= 1
+        return crc
 
-    async def disconnect(self) -> None:
-        """Disconnect from the BLE device."""
-        if self._proxy_client and self._is_proxy_connected:
-            _LOGGER.info("Disconnecting from ESPHome proxy.")
-            await self._proxy_client.disconnect()
-            self._is_proxy_connected = False
-        if self.client and self._is_connected:
-            _LOGGER.info("Disconnecting from standard client.")
-            await self.client.disconnect()
-            self._is_connected = False
-        self._last_data['connection_status'] = 'disconnected'
+    def _create_read_command(self, start_register: int, num_registers: int) -> bytes:
+        """Create Renogy-compatible read command"""
+        # Renogy command format: [0xFF, 0x03, start_reg_high, start_reg_low, count_high, count_low, crc_high, crc_low]
+        command = bytearray([
+            0xFF,  # Device ID (broadcast)
+            0x03,  # Function code (read holding registers)
+            (start_register >> 8) & 0xFF,  # Start register high byte
+            start_register & 0xFF,          # Start register low byte
+            (num_registers >> 8) & 0xFF,    # Number of registers high byte
+            num_registers & 0xFF             # Number of registers low byte
+        ])
+        
+        # Calculate CRC16 and append (Renogy uses little-endian CRC)
+        crc = self._calculate_crc(bytes(command))
+        command.append(crc & 0xFF)         # CRC low byte first
+        command.append((crc >> 8) & 0xFF)  # CRC high byte second
+        
+        return bytes(command)
 
-    async def start_notifications(self) -> None:
-        """Start receiving notifications from the device."""
-        client = self._proxy_client if self._is_proxy_connected else self.client
-        if not client:
-            _LOGGER.error("Cannot start notifications, no client available.")
-            return
-        _LOGGER.info(f"Starting notifications on {RENOGY_SERVICE_UUID}")
-        await client.start_notify(RENOGY_RX_CHAR_UUID, self.notification_handler)
+    async def _notification_handler(self, sender, data: bytearray):
+        """Handle notifications from the device"""
+        self._logger.info(f"📨 Notification received: {data.hex()}")
+        
+        # Extend response buffer
+        self._response_data.extend(data)
+        
+        # Check if we have a complete Renogy response
+        if len(self._response_data) >= 3:
+            if self._response_data[0] == 0xFF and self._response_data[1] == 0x03:
+                expected_length = self._response_data[2] + 5  # Data length + header + CRC
+                if len(self._response_data) >= expected_length:
+                    self._logger.info(f"✅ Complete Renogy response received: {self._response_data[:expected_length].hex()}")
+                    self._response_received = True
+                    
+                    # Send ACK (based on cyrils/renogy-bt research)
+                    await self._send_ack(self._response_data[0])
 
-    def notification_handler(self, sender, data: bytearray):
-        """Handle notifications from Renogy device, buffering data until a complete frame is received."""
-        _LOGGER.debug(f"📨 Notification chunk received: {data.hex()}")
-        self._buffer.extend(data)
-        _LOGGER.debug(f"Buffer content: {self._buffer.hex()}")
-
-        # Process the buffer to find and handle complete frames
-        while True:
-            frame = self._find_complete_frame()
-            if frame is None:
-                break
-            self._process_modbus_response(frame)
-
-    def _find_complete_frame(self) -> Optional[bytearray]:
-        """
-        Check the buffer for a complete Modbus frame.
-        A valid frame is: [0xFF, 0x03, length, ...data..., checksum_high, checksum_low]
-        Returns the frame if found, and removes it from the buffer. Otherwise returns None.
-        """
-        # Minimum frame length: Address(1) + Function(1) + Length(1) + CRC(2) = 5
-        if len(self._buffer) < 5:
-            return None
-
-        # Look for start byte (device ID)
-        if self._buffer[0] != self.device_id:
-            # If the first byte is not the device ID, we have a synchronization issue.
-            # This can happen if there's leftover data from a previous connection.
-            # We'll try to find the start of a valid frame.
-            
-            start_index = -1
-            for i in range(1, len(self._buffer)):
-                if self._buffer[i] == self.device_id:
-                    start_index = i
-                    break
-            
-            if start_index != -1:
-                _LOGGER.warning(f"Invalid data at buffer start, discarding {start_index} bytes. Buffer: {self._buffer.hex()}")
-                self._buffer = self._buffer[start_index:]
-                # Restart the check after slicing the buffer
-                return self._find_complete_frame()
-            else:
-                # If device ID is not found at all, the buffer is likely junk.
-                _LOGGER.error(f"Could not find frame start (device ID {self.device_id}). Discarding buffer: {self._buffer.hex()}")
-                self._buffer.clear()
-                return None
-
-        # At this point, buffer[0] is our device ID.
-        # Now check function code. We only expect 0x03 (read holding registers).
-        # A Modbus exception response would have the high bit set (e.g., 0x83).
-        if self._buffer[1] not in [0x03, 0x83, 0x10]: # Allow read, exception, and write
-            _LOGGER.error(f"Invalid function code {self._buffer[1]:02x}. Discarding buffer: {self._buffer.hex()}")
-            self._buffer.clear()
-            return None
-
-        # If it's an exception, the frame length is fixed at 5 bytes
-        if self._buffer[1] == 0x83:
-            if len(self._buffer) >= 5:
-                frame = self._buffer[:5]
-                self._buffer = self._buffer[5:]
-                # CRC check for exception frame
-                if not self._validate_crc(frame):
-                    _LOGGER.error(f"CRC check failed for exception frame: {frame.hex()}")
-                    return None
-                return frame
-            else:
-                return None # Not enough data for a full exception frame
-
-        # For a normal response (func code 0x03), the 3rd byte is the data length
-        data_len = self._buffer[2]
-        frame_len = 3 + data_len + 2  # Header(3) + Data + CRC(2)
-
-        if len(self._buffer) >= frame_len:
-            frame = self._buffer[:frame_len]
-            self._buffer = self._buffer[frame_len:]
-
-            if self._validate_crc(frame):
-                return frame
-            else:
-                _LOGGER.error(f"CRC check failed for frame: {frame.hex()}. Discarding.")
-        # Frame is corrupt, discard and continue searching
-                return None
-        else:
-            _LOGGER.debug(f"Incomplete frame. Need {frame_len} bytes, have {len(self._buffer)}. Waiting for more data.")
-            return None
-
-    def _process_modbus_response(self, data: bytearray):
-        """Process a complete Modbus response frame from Renogy device"""
+    async def _send_ack(self, first_byte: int):
+        """Send ACK message after receiving data (based on Renogy protocol)"""
         try:
-            _LOGGER.debug(f"Processing validated Modbus response: {data.hex()}")
-
-            data_length = data[2]
-            payload = data[3:3 + data_length]
-            
-            if len(payload) != data_length:
-                _LOGGER.error(f"Payload length mismatch. Expected {data_length}, got {len(payload)}. Frame: {data.hex()}")
-                return
-
-            # Heuristic to differentiate between data block and info string response
-            # The main data block is large (34 regs * 2 bytes/reg = 68 bytes)
-            # The info block is smaller (8 regs * 2 bytes/reg = 16 bytes)
-            if data_length > 20: # Likely the main data block
-                _LOGGER.debug(f"Processing as numeric data block (length {data_length})")
-                registers = [int.from_bytes(payload[i:i+2], 'big') for i in range(0, len(payload), 2)]
-                self._update_data_from_registers(registers)
-            else: # Likely a string response like model number
-                _LOGGER.debug(f"Processing as string data block (length {data_length})")
-                try:
-                    # Attempt to decode as ASCII string, removing padding and null bytes
-                    model_string = payload.decode('ascii').strip().replace('\x00', '')
-                    self._last_data['model_number'] = model_string
-                    _LOGGER.info(f"Parsed device model: {model_string}")
-                except UnicodeDecodeError:
-                    _LOGGER.warning(f"Could not decode payload as ASCII string: {payload.hex()}")
-            
-            self._new_data_event.set() # Signal that new data has been processed
-
+            if self._client and self._client.is_connected:
+                ack_message = f"main recv data[{first_byte:02x}] [".encode()
+                await self._client.write_gatt_char(self._tx_char_uuid, ack_message)
+                self._logger.debug(f"📤 ACK sent: {ack_message}")
         except Exception as e:
-            _LOGGER.error(f"Error processing Modbus response: {e}")
-    
-    def _update_data_from_registers(self, registers: List[int]):
-        """Update device data from a block of register values."""
-        try:
-            if not registers or len(registers) < RenogyRegisters.READ_BLOCK_SIZE:
-                _LOGGER.warning(f"Not enough registers to parse data. Got {len(registers)}, expected at least {RenogyRegisters.READ_BLOCK_SIZE}.")
-                return
+            self._logger.warning(f"Failed to send ACK: {e}")
 
-            def get_val(index, scale=1.0, signed=False):
-                """Safely get a value from the register list."""
-                raw_val = registers[index]
-                if signed and raw_val & 0x8000:  # Check for negative value
-                    return -((~raw_val & 0xFFFF) + 1) * scale
-                return raw_val * scale
-
-            # Unpacking data using the offsets from RenogyRegisters
-            self._last_data['battery_soc'] = get_val(RenogyRegisters.BATTERY_SOC)
-            self._last_data['battery_voltage'] = get_val(RenogyRegisters.BATTERY_VOLTAGE, 0.1)
-            
-            # Combine two registers for battery current (32-bit value)
-            raw_current = (registers[RenogyRegisters.BATTERY_CURRENT_RAW + 1] << 16) | registers[RenogyRegisters.BATTERY_CURRENT_RAW]
-            self._last_data['battery_current'] = (raw_current / 100.0)
-            
-            self._last_data['battery_temp'] = get_val(RenogyRegisters.BATTERY_TEMP, signed=True)
-            self._last_data['controller_temp'] = get_val(RenogyRegisters.CONTROLLER_TEMP, signed=True)
-            self._last_data['load_voltage'] = get_val(RenogyRegisters.LOAD_VOLTAGE, 0.1)
-            self._last_data['load_current'] = get_val(RenogyRegisters.LOAD_CURRENT, 0.01)
-            self._last_data['load_power'] = get_val(RenogyRegisters.LOAD_POWER)
-            self._last_data['solar_voltage'] = get_val(RenogyRegisters.SOLAR_VOLTAGE, 0.1)
-            self._last_data['solar_current'] = get_val(RenogyRegisters.SOLAR_CURRENT, 0.01)
-            self._last_data['solar_power'] = get_val(RenogyRegisters.SOLAR_POWER)
-            
-            # Daily Stats
-            self._last_data['daily_power_generation'] = get_val(RenogyRegisters.DAILY_POWER_GENERATION)
-            self._last_data['daily_power_consumption'] = get_val(RenogyRegisters.DAILY_POWER_CONSUMPTION)
-            
-            # Charging Status
-            charging_status_code = get_val(RenogyRegisters.CHARGING_STATUS)
-            self._last_data['charging_status'] = self._charging_status_map.get(charging_status_code, "Unknown")
-
-            # Total Power Generation (kWh)
-            total_gen_kwh = ((registers[RenogyRegisters.POWER_GENERATION_TOTAL_H] << 16) | registers[RenogyRegisters.POWER_GENERATION_TOTAL_L])
-            self._last_data['power_generation_total'] = total_gen_kwh
-
-            # Amp Hours
-            self._last_data['charging_amp_hours_today'] = get_val(RenogyRegisters.CHARGING_AMP_HOURS_TODAY)
-            self._last_data['discharging_amp_hours_today'] = get_val(RenogyRegisters.DISCHARGING_AMP_HOURS_TODAY)
-            
-            self._last_data['connection_status'] = 'connected'
-            self._last_data['last_update'] = datetime.now().isoformat()
-            
-            _LOGGER.debug(f"Updated data: {self._last_data}")
-
-        except IndexError as e:
-            _LOGGER.error(f"Index error while parsing registers. This may be due to an incorrect READ_BLOCK_SIZE. {e}")
-        except Exception as e:
-            _LOGGER.error(f"Error updating data from registers: {e}")
-    
-    async def read_device_info(self) -> dict:
-        """Read static device information like model number."""
-        if not self.is_connected:
-            _LOGGER.error("Not connected to device.")
+    def _parse_renogy_response(self, data: bytes) -> Dict[str, Any]:
+        """Parse Renogy response data into sensor values"""
+        if len(data) < 5 or data[0] != 0xFF or data[1] != 0x03:
+            self._logger.error(f"Invalid Renogy response format: {data.hex()}")
             return {}
+            
+        data_length = data[2]
+        if len(data) < data_length + 5:
+            self._logger.error(f"Incomplete response: expected {data_length + 5}, got {len(data)}")
+            return {}
+            
+        # Extract payload (skip header, get data, skip CRC)
+        payload = data[3:3+data_length]
+        self._logger.info(f"Response payload: {payload.hex()}")
+        
+        # Parse registers based on Renogy protocol
+        parsed_data = {}
         
         try:
-            if self._last_data.get('model_number') and self._last_data.get('model_number') != 'Unknown':
-                 return {'model_number': self._last_data.get('model_number')}
-
-            client = self._proxy_client if self._is_proxy_connected else self.client
-            if not client:
-                _LOGGER.error("No BLE client available for device info read.")
-                return {}
-
-            services = await client.get_services()
-            tx_char = self.get_characteristic(services, RENOGY_TX_CHAR_UUID)
-            if not tx_char:
-                _LOGGER.error("TX characteristic not found for device info.")
-                return {}
-
-            # Reading the model number which is typically a string over several registers.
-            # We'll need a specific parser for this response.
-            read_info_command = self._create_modbus_command(0x03, RenogyRegisters.MODEL, 8)
-            
-            self._new_data_event.clear()
-            await client.write_gatt_char(tx_char, read_info_command, response=True)
-            
-            try:
-                await asyncio.wait_for(self._new_data_event.wait(), timeout=5.0)
-            except asyncio.TimeoutError:
-                _LOGGER.warning("Timeout waiting for device info response.")
-
-            return {"model_number": self._last_data.get("model_number", "Unknown")}
-
+            if len(payload) >= 14:  # Device info response (7 registers)
+                # Parse device info registers (0x0100-0x0106)
+                parsed_data['battery_soc'] = struct.unpack('>H', payload[0:2])[0]  # Battery SOC %
+                parsed_data['battery_voltage'] = struct.unpack('>H', payload[2:4])[0] / 10.0  # Battery voltage
+                parsed_data['battery_current'] = struct.unpack('>H', payload[4:6])[0] / 100.0  # Battery current
+                parsed_data['controller_temp'] = struct.unpack('>H', payload[6:8])[0]  # Controller temp
+                parsed_data['battery_temp'] = struct.unpack('>H', payload[8:10])[0]  # Battery temp
+                parsed_data['solar_voltage'] = struct.unpack('>H', payload[10:12])[0] / 10.0  # Solar voltage
+                parsed_data['solar_current'] = struct.unpack('>H', payload[12:14])[0] / 100.0  # Solar current
+                
+                # Calculate derived values
+                parsed_data['solar_power'] = parsed_data['solar_voltage'] * parsed_data['solar_current']
+                parsed_data['model_number'] = "RNG-CTRL-ROVER"  # Default model
+                parsed_data['connection_status'] = 'connected'
+                parsed_data['last_update'] = datetime.now().isoformat()
+                
+                self._logger.info(f"✅ Parsed {len(parsed_data)} data points successfully")
+            else:
+                self._logger.warning(f"Unexpected payload length: {len(payload)}")
+                
         except Exception as e:
-            _LOGGER.error(f"Error reading device info: {e}")
+            self._logger.error(f"Error parsing response data: {e}")
+            return {}
+            
+        return parsed_data
+
+    async def read_device_info(self) -> Dict[str, Any]:
+        """Read device information using proper Renogy protocol"""
+        if not self._client or not self._client.is_connected:
+            self._logger.error("Device not connected")
+            return {}
+            
+        try:
+            # Clear previous response
+            self._response_data.clear()
+            self._response_received = False
+            
+            # Create device info command (read registers 0x0100-0x0106, 7 registers)
+            command = self._create_read_command(0x0100, 7)
+            self._logger.debug(f"📤 Sending device info command: {command.hex()}")
+            
+            # Send command
+            await self._client.write_gatt_char(self._tx_char_uuid, command)
+            
+            # Wait for response
+            timeout_start = asyncio.get_event_loop().time()
+            while not self._response_received and (asyncio.get_event_loop().time() - timeout_start) < self._response_timeout:
+                await asyncio.sleep(0.1)
+                
+            if not self._response_received:
+                self._logger.warning("⏰ Timeout waiting for device info response")
+                return {}
+                
+            # Parse response
+            return self._parse_renogy_response(bytes(self._response_data))
+            
+        except Exception as e:
+            self._logger.error(f"Error reading device info: {e}")
             return {}
 
-    async def read_realtime_data(self) -> bool:
-        """Read real-time data from the device."""
-        if not self.is_connected:
-            _LOGGER.error("Not connected to device for realtime data.")
-            return False
-
+    async def read_realtime_data(self) -> Dict[str, Any]:
+        """Read real-time data using proper Renogy protocol"""
+        if not self._client or not self._client.is_connected:
+            self._logger.error("Device not connected")
+            return {}
+            
         try:
-            client = self._proxy_client if self._is_proxy_connected else self.client
-            if not client:
-                _LOGGER.error("No BLE client available for realtime data read.")
+            # Clear previous response
+            self._response_data.clear()
+            self._response_received = False
+            
+            # Create real-time data command (read registers 0x0107-0x0110, 10 registers)
+            command = self._create_read_command(0x0107, 10)
+            self._logger.debug(f"📤 Sending real-time data command: {command.hex()}")
+            
+            # Send command
+            await self._client.write_gatt_char(self._tx_char_uuid, command)
+            
+            # Wait for response
+            timeout_start = asyncio.get_event_loop().time()
+            while not self._response_received and (asyncio.get_event_loop().time() - timeout_start) < self._response_timeout:
+                await asyncio.sleep(0.1)
+                
+            if not self._response_received:
+                self._logger.warning("⏰ Timeout waiting for real-time data response")
+                return {}
+                
+            # Parse response
+            return self._parse_renogy_response(bytes(self._response_data))
+            
+        except Exception as e:
+            self._logger.error(f"Error reading real-time data: {e}")
+            return {}
+
+    async def connect(self) -> bool:
+        """Connect to the Renogy device"""
+        try:
+            self._logger.info(f"🔗 Connecting to Renogy device: {self._device_name} ({self.mac_address})")
+            
+            self._client = BleakClient(self.mac_address)
+            await self._client.connect()
+            
+            if not self._client.is_connected:
+                self._logger.error("Failed to establish connection")
                 return False
                 
-            services = await client.get_services()
-            tx_char = self.get_characteristic(services, RENOGY_TX_CHAR_UUID)
-            if not tx_char:
-                _LOGGER.error("TX characteristic not found for real-time data.")
-                return False
-
-            # Fetch the main data block
-            read_data_command = self._create_modbus_command(0x03, RenogyRegisters.READ_BLOCK_START, RenogyRegisters.READ_BLOCK_SIZE)
-            self._new_data_event.clear()
-            await client.write_gatt_char(tx_char, read_data_command, response=True)
-
-            try:
-                await asyncio.wait_for(self._new_data_event.wait(), timeout=5.0)
-                return True
-            except asyncio.TimeoutError:
-                _LOGGER.warning("Timeout waiting for real-time data response.")
-                return False
-        
+            self._logger.info("Connection status: True")
+            self._logger.info("Connection successful. Starting notification handler.")
+            
+            # Start notifications on RX characteristic
+            self._logger.info(f"Starting notifications on {self._rx_char_uuid}")
+            await self._client.start_notify(self._rx_char_uuid, self._notification_handler)
+            
+            self._connected = True
+            return True
+            
         except Exception as e:
-            _LOGGER.error(f"Error reading real-time data: {e}")
+            self._logger.error(f"Failed to connect: {e}")
             return False
 
     def _get_offline_data(self) -> Dict[str, Any]:
@@ -408,9 +307,12 @@ class BluPowClient:
         Return a dictionary with default values for all sensors when the device is offline.
         This ensures that the entities are still created in Home Assistant but appear as 'Unavailable'.
         """
-        offline_data = {
-            key: None for key in DEVICE_SENSORS
-        }
+        offline_data = {}
+        
+        # Extract sensor keys from DEVICE_SENSORS tuple
+        for sensor_desc in DEVICE_SENSORS:
+            offline_data[sensor_desc.key] = None
+        
         offline_data['connection_status'] = 'disconnected'
         offline_data['last_update'] = datetime.now().isoformat()
         _LOGGER.debug("Returning offline data structure.")
@@ -418,63 +320,58 @@ class BluPowClient:
 
     def get_data(self) -> Dict[str, Any]:
         """Return the latest device data."""
-        if not self.is_connected:
+        if not self._connected:
             return self._get_offline_data()
         return self._last_data
 
-    @staticmethod
-    def _create_modbus_command(function_code: int, start_address: int, number_of_registers: int) -> bytearray:
-        """Create a Modbus RTU command."""
-        command = bytearray()
-        command.append(1)  # Device ID
-        command.append(function_code)
-        command.extend(start_address.to_bytes(2, 'big'))
-        command.extend(number_of_registers.to_bytes(2, 'big'))
-        
-        crc = BluPowClient._calculate_crc(command)
-        command.extend(crc.to_bytes(2, 'little'))
-        
-        return command
+    def get_test_data(self) -> Dict[str, Any]:
+        """Return simulated test data for debugging purposes."""
+        test_data = {
+            'model_number': 'BTRIC-Test-Device',
+            'battery_voltage': 12.6,
+            'battery_current': 15.2,
+            'battery_soc': 85,
+            'battery_temp': 22,
+            'solar_voltage': 18.4,
+            'solar_current': 8.5,
+            'solar_power': 156,
+            'load_voltage': 12.5,
+            'load_current': 3.2,
+            'load_power': 40,
+            'controller_temp': 28,
+            'daily_power_generation': 1250,
+            'daily_power_consumption': 850,
+            'charging_status': 'MPPT',
+            'power_generation_total': 145.67,
+            'charging_amp_hours_today': 45.2,
+            'discharging_amp_hours_today': 32.1,
+            'connection_status': 'test_mode',
+            'last_update': datetime.now().isoformat()
+        }
+        _LOGGER.info("Returning test data for debugging")
+        return test_data
 
-    @staticmethod
-    def _calculate_crc(data: bytearray) -> int:
-        """Calculate CRC16 for Modbus."""
-        crc = 0xFFFF
-        for byte in data:
-            crc ^= byte
-            for _ in range(8):
-                if crc & 0x0001:
-                    crc >>= 1
-                    crc ^= 0xA001
-                else:
-                    crc >>= 1
-        return crc
+    @property
+    def address(self) -> str:
+        """Return the device MAC address"""
+        return self.mac_address
 
-    def _validate_crc(self, frame: bytearray) -> bool:
-        """Validate the CRC of a received Modbus frame."""
-        if len(frame) < 2:
-            return False
-        
-        received_crc = int.from_bytes(frame[-2:], 'little')
-        calculated_crc = self._calculate_crc(frame[:-2])
-        
-        is_valid = received_crc == calculated_crc
-        if not is_valid:
-            _LOGGER.error(f"CRC Mismatch! Received: {received_crc:04x}, Calculated: {calculated_crc:04x}, Frame: {frame.hex()}")
-        return is_valid
+    @property
+    def is_connected(self) -> bool:
+        """Check if client is connected to device"""
+        return self._client is not None and self._client.is_connected
 
-    def get_characteristic(self, services, uuid):
-        """Helper to find a characteristic by UUID."""
-        for service in services:
-            for char in service.characteristics:
-                if char.uuid.lower() == uuid.lower():
-                    return char
-        return None
+    async def disconnect(self) -> None:
+        """Disconnect from the device"""
+        if self._client and self._client.is_connected:
+            await self._client.disconnect()
+            self._logger.info("🔌 Disconnected from device")
+        self._connected = False
 
     def __del__(self):
         """Cleanup on destruction"""
-        if hasattr(self, 'client') and self.client:
+        if hasattr(self, '_client') and self._client:
             try:
-                asyncio.create_task(self.disconnect())
+                asyncio.create_task(self._client.disconnect())
             except:
                 pass 

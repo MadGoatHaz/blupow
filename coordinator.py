@@ -39,11 +39,7 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
         try:
             if not self.client.is_connected:
                 _LOGGER.info("Client not connected, attempting to connect...")
-                if self.ble_device:
-                    await self.client.connect(self.ble_device)
-                else:
-                    _LOGGER.error("No BLE device available to initiate connection.")
-                    return self.client.get_data() # Return offline data
+                await self.client.connect()
 
             if self.client.is_connected:
                 # First, ensure we have the model number
@@ -58,8 +54,10 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             # In case of any error, ensure we are disconnected to force a reconnect on next attempt
             await self.client.disconnect()
         
-        _LOGGER.debug(f"Data received from client: {self.client.get_data().keys()}")
-        return self.client.get_data()
+        data = self.client.get_data()
+        _LOGGER.debug(f"Data received from client: {list(data.keys())}")
+        _LOGGER.debug(f"Sample data values: {dict(list(data.items())[:5])}")
+        return data
 
     @property
     def device_info(self) -> Dict[str, Any]:
@@ -78,4 +76,12 @@ class BluPowDataUpdateCoordinator(DataUpdateCoordinator[Dict[str, Any]]):
             "model": model,
             "manufacturer": "Renogy",
         }
+
+    async def enable_test_mode(self) -> None:
+        """Enable test mode with simulated data for debugging."""
+        _LOGGER.info("Enabling test mode for BluPow coordinator")
+        # Override get_data to return test data
+        original_get_data = self.client.get_data
+        self.client.get_data = self.client.get_test_data
+        await self.async_refresh()
 

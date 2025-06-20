@@ -434,7 +434,7 @@ class BluPowTestingSuite:
 
         try:
             # Create a BluPowClient instance
-            client = BluPowClient(TARGET_DEVICE['address'], hass=MockHass())
+            client = BluPowClient(TARGET_DEVICE['address'])
 
             # Connect to the device
             if not await client.connect():

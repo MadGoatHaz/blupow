@@ -59,8 +59,27 @@ class BluPowSensor(CoordinatorEntity[BluPowDataUpdateCoordinator], SensorEntity)
     @property
     def available(self) -> bool:
         """Return if the entity is available."""
-        return self.coordinator.last_update_success and \
-               self.coordinator.data.get('connection_status') == 'connected'
+        if not self.coordinator.data:
+            return False
+        
+        connection_status = self.coordinator.data.get('connection_status')
+        
+        # Available if connected or in test mode
+        is_available = (
+            self.coordinator.last_update_success and 
+            connection_status in ['connected', 'test_mode']
+        )
+        
+        # Debug logging for sensor availability
+        if not is_available:
+            _LOGGER.debug(
+                "Sensor %s unavailable: last_update_success=%s, connection_status=%s",
+                self.entity_description.key,
+                self.coordinator.last_update_success,
+                connection_status
+            )
+        
+        return is_available
 
     async def async_added_to_hass(self) -> None:
         """Handle entity added to hass with logging."""
