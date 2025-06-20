@@ -1,4 +1,7 @@
 """Constants for the BluPow: Temperature/Humidity Bluetooth integration."""
+from __future__ import annotations
+
+import logging
 from typing import Final
 
 from homeassistant.components.sensor import (
@@ -7,13 +10,20 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
+    ELECTRIC_CURRENT_AMPERE,
+    ELECTRIC_POTENTIAL_VOLT,
+    ENERGY_KILO_WATT_HOUR,
     PERCENTAGE,
+    POWER_WATT,
+    TEMPERATURE_CELSIUS,
+    TIME_DAYS,
+    FREQUENCY_HERTZ,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfEnergy,
-    UnitOfFrequency,
     UnitOfPower,
     UnitOfTemperature,
+    UnitOfTime,
 )
 
 DOMAIN: Final = "blupow"
@@ -41,65 +51,8 @@ RENOGY_MANUFACTURER_ID: Final = 0x7DE0  # Renogy manufacturer ID
 DEFAULT_SCAN_TIMEOUT: Final = 10.0
 DEFAULT_CONNECT_TIMEOUT: Final = 20.0
 
-# --- Renogy Modbus Register Definitions ---
-# Based on reverse-engineering of cyrils/renogy-bt and official documentation.
-
-class RenogyRegisters:
-    """Register addresses for Renogy devices."""
-    
-    # --- Device Information (Read in a separate, initial query) ---
-    MODEL = 0x000A
-    SOFTWARE_VERSION = 0x000C
-    HARDWARE_VERSION = 0x000E
-    
-    # --- Real-time Data Block (Read in a single query) ---
-    READ_BLOCK_START = 0x0100
-    READ_BLOCK_SIZE = 34 # Number of registers to read from the start address
-    
-    # --- Register Offsets from READ_BLOCK_START (0x0100) ---
-    # These are indices into the list of registers returned by the block read
-    BATTERY_SOC = 0
-    BATTERY_VOLTAGE = 1
-    BATTERY_CURRENT_RAW = 2  # Combined with next register
-    SOLAR_VOLTAGE = 3
-    SOLAR_CURRENT = 4
-    SOLAR_POWER = 5
-    LOAD_VOLTAGE = 6
-    LOAD_CURRENT = 7
-    LOAD_POWER = 8
-    CONTROLLER_TEMP = 9
-    BATTERY_TEMP = 10
-    
-    # Daily Statistics (relative to 0x0100)
-    BATTERY_MIN_VOLTAGE_TODAY = 11
-    BATTERY_MAX_VOLTAGE_TODAY = 12
-    CHARGER_MAX_CURRENT_TODAY = 13
-    DISCHARGER_MAX_CURRENT_TODAY = 14
-    CHARGER_MAX_POWER_TODAY = 15
-    DISCHARGER_MAX_POWER_TODAY = 16
-    CHARGING_AMP_HOURS_TODAY = 17
-    DISCHARGING_AMP_HOURS_TODAY = 18
-    POWER_GENERATION_TODAY = 19
-    POWER_CONSUMPTION_TODAY = 20
-    
-    # Historical Data (relative to 0x0100)
-    TOTAL_OPERATING_DAYS = 21
-    TOTAL_BATTERY_OVER_DISCHARGES = 22
-    TOTAL_BATTERY_FULL_CHARGES = 23
-    TOTAL_CHARGING_AMP_HOURS = 24 # 2 registers
-    TOTAL_POWER_GENERATED = 26 # 2 registers
-    
-    # Status and Settings (relative to 0x0100)
-    CHARGING_STATUS = 28
-    
-    # Aliases for correct mapping
-    DAILY_POWER_GENERATION = POWER_GENERATION_TODAY
-    DAILY_POWER_CONSUMPTION = POWER_CONSUMPTION_TODAY
-    POWER_GENERATION_TOTAL_L = TOTAL_POWER_GENERATED
-    POWER_GENERATION_TOTAL_H = TOTAL_POWER_GENERATED + 1
-
-
 # Sensor Descriptions - RENOGY INVERTER (RIV1230RCH-SPS) OPTIMIZED FOR ENERGY DASHBOARD
+# These are the 22 sensors for the currently supported inverter model.
 DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
     # Inverter Model Information
     SensorEntityDescription(
@@ -285,4 +238,65 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
 
 CONF_UPDATE_INTERVAL = "update_interval"
 DEFAULT_UPDATE_INTERVAL = 30
+
+# --- Obsolete Renogy Charge Controller Register Definitions ---
+# This class represents the register layout for the Renogy charge controller,
+# which was the device this integration was originally, and incorrectly,
+# built for. It is preserved here as a historical artifact to provide
+# context for the project's evolution, as detailed in docs/PROJECT_HISTORY.md.
+# It is not used anywhere in the current inverter-based implementation.
+#
+# class RenogyRegisters:
+#     """Register addresses for Renogy devices."""
+#
+#     # --- Device Information (Read in a separate, initial query) ---
+#     MODEL = 0x000A
+#     SOFTWARE_VERSION = 0x000C
+#     HARDWARE_VERSION = 0x000E
+#
+#     # --- Real-time Data Block (Read in a single query) ---
+#     READ_BLOCK_START = 0x0100
+#     READ_BLOCK_SIZE = 34 # Number of registers to read from the start address
+#
+#     # --- Register Offsets from READ_BLOCK_START (0x0100) ---
+#     # These are indices into the list of registers returned by the block read
+#     BATTERY_SOC = 0
+#     BATTERY_VOLTAGE = 1
+#     BATTERY_CURRENT_RAW = 2  # Combined with next register
+#     SOLAR_VOLTAGE = 3
+#     SOLAR_CURRENT = 4
+#     SOLAR_POWER = 5
+#     LOAD_VOLTAGE = 6
+#     LOAD_CURRENT = 7
+#     LOAD_POWER = 8
+#     CONTROLLER_TEMP = 9
+#     BATTERY_TEMP = 10
+#
+#     # Daily Statistics (relative to 0x0100)
+#     BATTERY_MIN_VOLTAGE_TODAY = 11
+#     BATTERY_MAX_VOLTAGE_TODAY = 12
+#     CHARGER_MAX_CURRENT_TODAY = 13
+#     DISCHARGER_MAX_CURRENT_TODAY = 14
+#     CHARGER_MAX_POWER_TODAY = 15
+#     DISCHARGER_MAX_POWER_TODAY = 16
+#     CHARGING_AMP_HOURS_TODAY = 17
+#     DISCHARGING_AMP_HOURS_TODAY = 18
+#     POWER_GENERATION_TODAY = 19
+#     POWER_CONSUMPTION_TODAY = 20
+#
+#     # Historical Data (relative to 0x0100)
+#     TOTAL_OPERATING_DAYS = 21
+#     TOTAL_BATTERY_OVER_DISCHARGES = 22
+#     TOTAL_BATTERY_FULL_CHARGES = 23
+#     TOTAL_CHARGING_AMP_HOURS = 24 # 2 registers
+#     TOTAL_POWER_GENERATED = 26 # 2 registers
+#
+#     # Status and Settings (relative to 0x0100)
+#     CHARGING_STATUS = 28
+#
+#     # Aliases for correct mapping
+#     DAILY_POWER_GENERATION = POWER_GENERATION_TODAY
+#     DAILY_POWER_CONSUMPTION = POWER_CONSUMPTION_TODAY
+#     POWER_GENERATION_TOTAL_L = TOTAL_POWER_GENERATED
+#     POWER_GENERATION_TOTAL_H = TOTAL_POWER_GENERATED + 1
 

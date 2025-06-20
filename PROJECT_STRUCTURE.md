@@ -1,104 +1,60 @@
 # BluPow Project Structure
 
-## 📁 Directory Organization
+This document provides a clear overview of the BluPow integration's file and directory structure.
 
-```
-blupow/
-├── 📂 brand/                    # Branding assets
-│   └── blupow/
-│       ├── logo.png
-│       └── manifest.json
-├── 📂 docs/                     # Documentation
-│   ├── 📂 guides/               # User guides
-│   │   ├── CONTAINER_SETUP_GUIDE.md
-│   │   ├── ENERGY_DASHBOARD_PLAN.md
-│   │   └── FUTURE_VISION.md
-│   ├── 📂 troubleshooting/      # Troubleshooting guides
-│   │   └── TROUBLESHOOTING.md
-│   ├── 📂 development/          # Developer documentation
-│   │   ├── CONTEXT_GUIDE.md
-│   │   ├── SESSION_SUMMARY.md
-│   │   ├── TESTING_GUIDE.md
-│   │   └── NEXT_STEPS.md
-│   ├── CURRENT_STATUS.md
-│   └── DOCUMENTATION.md
-├── 📂 info/                     # Reference information
-│   └── AppArmor Info.txt        # AppArmor security reference
-├── 📂 logs/                     # Log files (created at runtime)
-├── 📂 results/                  # Test and analysis results
-│   ├── progress_log.json
-│   ├── progress_results.json
-│   └── proxy_move_results.md
-├── 📂 scripts/                  # Utility scripts
-│   ├── deploy.sh                # Deployment script
-│   └── setup_container_bluetooth.sh  # Container setup script
-├── 📂 tests/                    # Testing framework
-│   ├── 📂 diagnostics/          # Diagnostic tools
-│   │   ├── blupow_testing_suite.py
-│   │   ├── device_discovery_system.py
-│   │   ├── device_wake_system.py
-│   │   └── monitor_progress.py
-│   ├── 📂 integration/          # Integration tests
-│   │   ├── connection_test.py
-│   │   ├── proxy_test.py
-│   │   ├── quick_test.py
-│   │   └── simple_test.py
-│   └── 📂 unit/                 # Unit tests (future)
-├── 📂 translations/             # Internationalization
-│   └── en.json
-├── 📂 .vscode/                  # VS Code configuration
-│   └── settings.json
-├── 📄 Core Integration Files    # Home Assistant integration
-│   ├── __init__.py              # Integration entry point
-│   ├── blupow_client.py         # Main client implementation
-│   ├── config_flow.py           # Configuration flow
-│   ├── const.py                 # Constants and configuration
-│   ├── coordinator.py           # Data coordinator
-│   ├── diagnostics.py           # Diagnostic data
-│   ├── manifest.json            # Integration manifest
-│   ├── sensor.py                # Sensor platform
-│   └── strings.json             # UI strings
-├── 📄 Project Files
-│   ├── .gitignore               # Git ignore rules
-│   ├── BluPow.png              # Project logo
-│   ├── LICENSE                  # License file
-│   └── README.md               # Main project documentation
-└── 📄 Legacy Files
-    └── Home Assistant Integration.txt  # Original integration notes
+## 📁 Root Directory
+
+The root directory contains the core integration files, primary documentation, and configuration.
+
+- `__init__.py`: Handles the initial setup of the integration in Home Assistant.
+- `config_flow.py`: Manages the user configuration flow (e.g., adding the device).
+- `const.py`: Contains all project-wide constants, including sensor definitions.
+- `coordinator.py`: The data update coordinator, which schedules and manages data fetching.
+- `sensor.py`: Defines the Home Assistant sensor entities.
+- `manifest.json`: The integration's manifest file, defining its properties.
+- `README.md`: The main entry point for understanding the project.
+- `PROJECT_STRUCTURE.md`: This file.
+- `LICENSE`: The project's license.
+
+## 📁 `docs/` - Documentation
+
+This directory contains all project documentation, organized for clarity.
+
+- `PROJECT_HISTORY.md`: **(Start here for context)** A detailed history of the project's evolution, explaining the critical "inverter vs. charge controller" discovery.
+- `guides/`: Contains all user-facing guides.
+  - `VERIFICATION_GUIDE.md`: Step-by-step instructions for verifying the connection to the inverter.
+  - `CONTAINER_SETUP_GUIDE.md`: The definitive guide for configuring Docker, including advanced AppArmor and Bluetooth troubleshooting.
+  - `ENERGY_DASHBOARD_PLAN.md`: A plan for integrating the sensors with the Home Assistant Energy Dashboard.
+  - `FUTURE_VISION.md`: High-level goals and future ideas for the project.
+- `troubleshooting/`: Specific troubleshooting documents.
+  - `TROUBLESHOOTING.md`: General troubleshooting steps for common issues.
+  - `BLUETOOTH_CONNECTION_GUIDE.md`: A guide focused on Bluetooth-specific problems.
+- `development/`: Notes and research for developers.
+  - `AUTHENTICATION_RESEARCH.md`: Historical research on the device's protocol.
+  - `NEXT_STEPS.md`: A historical document outlining the recovery plan.
+  - `TESTING_GUIDE.md`: A guide for testing the integration.
+
+## 📁 `scripts/` - Utility & Diagnostic Scripts
+
+This directory contains helpful scripts for testing, verification, and diagnostics.
+
+- `verify_connection.py`: **(Primary user tool)** A simple script to perform a live connection test and verify data retrieval. Supports both interactive and CLI modes for AI automation.
+- `diagnostics.py`: **(Advanced diagnostics)** A powerful, menu-driven diagnostic tool for in-depth troubleshooting of connectivity, sensors, and project structure. Fully supports CLI automation.
+- `project_health_check.py`: **(Comprehensive analysis)** A master health check script that provides complete project analysis, including code consistency, documentation completeness, and system readiness.
+
+### CLI Examples for AI Contributors
+
+```bash
+# Quick connection verification with JSON output
+python3 scripts/verify_connection.py --json --quiet
+
+# Run specific diagnostic tests
+python3 scripts/diagnostics.py --test connection --json
+python3 scripts/diagnostics.py --test sensors --quiet
+
+# Comprehensive project health check
+python3 scripts/project_health_check.py --json
+python3 scripts/project_health_check.py --brief --skip-hardware
 ```
 
-## 📋 File Categories
-
-### Core Integration Files
-These are the main Home Assistant integration files that should remain in the root directory:
-
-- **`__init__.py`** - Integration entry point and setup
-- **`blupow_client.py`** - Main Bluetooth client implementation
-- **`config_flow.py`** - Configuration flow for Home Assistant UI
-- **`const.py`** - Constants, device definitions, and configuration
-- **`coordinator.py`** - Data update coordinator
-- **`diagnostics.py`** - Diagnostic data collection
-- **`manifest.json`** - Integration manifest for Home Assistant
-- **`sensor.py`** - Sensor platform implementation
-- **`strings.json`** - UI strings and translations
-
-### Documentation (`docs/`)
-Organized by purpose and audience:
-
-#### Guides (`docs/guides/`)
-- **`CONTAINER_SETUP_GUIDE.md`** - Docker container configuration
-- **`ENERGY_DASHBOARD_PLAN.md`** - Energy dashboard integration plan
-- **`FUTURE_VISION.md`** - Long-term roadmap and automation vision
-
-#### Troubleshooting (`docs/troubleshooting/`)
-- **`TROUBLESHOOTING.md`** - Complete troubleshooting guide
-
-#### Development (`docs/development/`)
-- **`CONTEXT_GUIDE.md`** - Developer context and background
-- **`SESSION_SUMMARY.md`** - Development session summaries
-- **`TESTING_GUIDE.md`** - Testing procedures and methodologies
-- **`NEXT_STEPS.md`** - Development plan for the next coding session
-
-### Testing Framework (`tests/`)
-
-#### Diagnostics (`
+## 📁 `brand/` & `translations/`

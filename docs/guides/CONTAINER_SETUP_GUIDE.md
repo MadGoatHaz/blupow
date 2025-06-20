@@ -1,108 +1,83 @@
-# BluPow Container Configuration Guide
+# BluPow Container & Bluetooth Configuration Guide
 
-## 🎯 Problem: AppArmor/Container Security Blocking Bluetooth
+This is the definitive guide for resolving Bluetooth connectivity issues when running the BluPow integration inside a Docker container. These issues almost always stem from the container's security policies (like AppArmor) preventing Home Assistant from accessing the host's Bluetooth hardware.
 
-Your Home Assistant Docker container cannot access Bluetooth due to security restrictions. This guide provides multiple solutions to enable Bluetooth access while maintaining reasonable security.
+## 🔍 Step 1: Diagnose the Problem
 
-## 🔍 Diagnosis: Confirm the Issue
-
-First, verify this is your issue by checking for these error messages:
+First, confirm that you are facing a container security issue. Check your Home Assistant and system logs for these specific error messages:
 
 ```bash
-# Check Home Assistant logs
-docker logs homeassistant | grep -i "apparmor\|access.*denied\|bluetooth"
+# Check Home Assistant logs for D-Bus errors
+docker logs homeassistant | grep -i "dbus"
 
 # Check system logs for AppArmor denials
-sudo dmesg | grep -i apparmor | grep -i denied
+sudo dmesg | grep -i "apparmor" | grep -i "denied"
 ```
 
-**Look for:**
+**If you see messages like these, you have a container security issue:**
 - `[org.freedesktop.DBus.Error.AccessDenied] An AppArmor policy prevents this sender from sending this message`
 - `apparmor="DENIED" operation="dbus_method_call"`
-- `authentication failed: REJECTED: ['EXTERNAL']`
 
-## 🛠️ Solution Options (Choose One)
+## 🛠️ Step 2: Choose Your Solution
 
-### Option 1: Privileged Mode (Easiest, Less Secure)
+Here are three common solutions, from easiest (but least secure) to most secure. For most users, **Option 2 is the recommended balance.**
 
-**For Docker Run:**
-```bash
-docker run -d \
-  --name homeassistant \
-  --privileged \
-  --restart=unless-stopped \
-  -e TZ=Your/Timezone \
-  -v /path/to/config:/config \
-  -v /run/dbus:/run/dbus:ro \
-  --network=host \
-  ghcr.io/home-assistant/home-assistant:stable
-```
+---
 
-**For Docker Compose:**
+### Option 1: Privileged Mode (The Easy Way)
+
+This option gives the container full access to all host devices. It's the simplest way to solve the problem but reduces the security benefits of containerization.
+
+**For `docker-compose.yml`:**
 ```yaml
 services:
   homeassistant:
-    container_name: homeassistant
+    # ... other config ...
     image: ghcr.io/home-assistant/home-assistant:stable
     privileged: true
-    restart: unless-stopped
-    environment:
-      - TZ=Your/Timezone
-    volumes:
-      - /path/to/config:/config
-      - /run/dbus:/run/dbus:ro
     network_mode: host
+    volumes:
+      - /path/to/your/config:/config
+      - /run/dbus:/run/dbus:ro
 ```
 
-### Option 2: Specific Device Access (More Secure)
+---
 
-**For Docker Run:**
-```bash
-docker run -d \
-  --name homeassistant \
-  --restart=unless-stopped \
-  -e TZ=Your/Timezone \
-  -v /path/to/config:/config \
-  -v /run/dbus:/run/dbus:ro \
-  --device /dev/bus/usb \
-  --device /dev/ttyUSB0 \
-  --device /dev/ttyACM0 \
-  --cap-add=NET_ADMIN \
-  --cap-add=NET_RAW \
-  --network=host \
-  ghcr.io/home-assistant/home-assistant:stable
-```
+### Option 2: Specific Device Access (Recommended)
 
-**For Docker Compose:**
+This is the preferred method. It grants the container access only to the necessary Bluetooth hardware and gives it the required network capabilities, without granting full privileged access.
+
+**For `docker-compose.yml`:**
 ```yaml
 services:
   homeassistant:
-    container_name: homeassistant
+    # ... other config ...
     image: ghcr.io/home-assistant/home-assistant:stable
-    restart: unless-stopped
-    environment:
-      - TZ=Your/Timezone
-    volumes:
-      - /path/to/config:/config
-      - /run/dbus:/run/dbus:ro
-    devices:
-      - /dev/bus/usb:/dev/bus/usb
-      - /dev/ttyUSB0:/dev/ttyUSB0
-      - /dev/ttyACM0:/dev/ttyACM0
+    # Note: No 'privileged: true'
+    network_mode: host
     cap_add:
       - NET_ADMIN
       - NET_RAW
-    network_mode: host
+    devices:
+      # You may need to verify the exact path of your BT adapter
+      - /dev/hci0:/dev/hci0
+    volumes:
+      - /path/to/your/config:/config
+      - /run/dbus:/run/dbus:ro
 ```
+
+---
 
 ### Option 3: Custom AppArmor Profile (Most Secure)
 
-**Step 1: Create Custom Profile**
+This is the most advanced option. It involves creating a custom security profile that grants the container the exact permissions it needs for Bluetooth and nothing more.
+
+**1. Create the custom profile file:**
 ```bash
 sudo nano /etc/apparmor.d/docker-homeassistant-bluetooth
 ```
 
-**Profile Content:**
+**2. Paste in the following profile. This profile is tailored to allow D-Bus and Bluetooth operations:**
 ```c
 #include <tunables/global>
 
@@ -110,18 +85,18 @@ profile docker-homeassistant-bluetooth flags=(attach_disconnected,mediate_delete
   #include <abstractions/base>
   #include <abstractions/python>
 
-  # Network access
+  # Allow network access for Home Assistant
   network inet tcp,
   network inet udp,
   network inet icmp,
   network netlink raw,
 
-  # Bluetooth and D-Bus access
+  # Allow Bluetooth and D-Bus communication
   network netlink,
   dbus (send, receive) bus=system,
   dbus (send, receive) bus=session,
 
-  # File system access
+  # Allow access to necessary system files for Bluetooth
   file,
   /run/dbus/system_bus_socket rw,
   /run/udev/control rw,
@@ -129,75 +104,56 @@ profile docker-homeassistant-bluetooth flags=(attach_disconnected,mediate_delete
   /sys/devices/virtual/bluetooth/** r,
   /dev/rfkill rw,
 
-  # Capabilities
+  # Grant required capabilities
   capability net_admin,
   capability net_raw,
   capability dac_override,
-  capability setuid,
-  capability setgid,
 
-  # Python and Home Assistant
+  # Allow Python execution
   /usr/bin/python3 ix,
   /usr/local/bin/python3 ix,
-  /config/** rw,
-  /tmp/** rw,
 
-  # Deny dangerous operations
-  deny @{PROC}/sys/kernel/core_pattern w,
-  deny mount,
-  deny umount,
+  # Allow access to config and temp directories
+  /config/** rwk,
+  /tmp/** rwk,
 }
 ```
 
-**Step 2: Load the Profile**
+**3. Load the new profile into AppArmor:**
 ```bash
 sudo apparmor_parser -r -W /etc/apparmor.d/docker-homeassistant-bluetooth
 ```
 
-**Step 3: Use the Profile**
-```bash
-docker run -d \
-  --name homeassistant \
-  --security-opt apparmor=docker-homeassistant-bluetooth \
-  --restart=unless-stopped \
-  -e TZ=Your/Timezone \
-  -v /path/to/config:/config \
-  -v /run/dbus:/run/dbus:ro \
-  --network=host \
-  ghcr.io/home-assistant/home-assistant:stable
-```
-
-### Option 4: MacVLAN Network (Advanced)
-
-**Step 1: Create MacVLAN Network**
-```bash
-docker network create -d macvlan \
-  --subnet=192.168.1.0/24 \
-  --gateway=192.168.1.1 \
-  -o parent=eth0 \
-  macvlan_network
-```
-
-**Step 2: Docker Compose with MacVLAN**
+**4. Update your `docker-compose.yml` to use the profile:**
 ```yaml
 services:
   homeassistant:
-    container_name: homeassistant
+    # ... other config ...
     image: ghcr.io/home-assistant/home-assistant:stable
-    restart: unless-stopped
-    environment:
-      - TZ=Your/Timezone
+    network_mode: host
+    security_opt:
+      - apparmor=docker-homeassistant-bluetooth # Use the new profile
     volumes:
-      - /path/to/config:/config
+      - /path/to/your/config:/config
       - /run/dbus:/run/dbus:ro
-    networks:
-      macvlan_network:
-        ipv4_address: 192.168.1.100
-
-networks:
-  macvlan_network:
-    external: true
 ```
+
+## ✅ Step 3: Restart and Verify
+
+After applying your chosen solution, restart your Home Assistant container.
+```bash
+docker-compose up -d --force-recreate homeassistant
+```
+Once restarted, run the connection verification script again. It should now be able to connect successfully.
+```bash
+python3 scripts/verify_connection.py
+```
+
+This consolidated guide provides a robust and detailed approach to solving container-based Bluetooth issues, preserving the critical low-level knowledge required for effective troubleshooting.
+
+## 🎯 Problem: AppArmor/Container Security Blocking Bluetooth
+
+Your Home Assistant Docker container cannot access Bluetooth due to security restrictions. This guide provides multiple solutions to enable Bluetooth access while maintaining reasonable security.
 
 ## 🧪 Testing Your Configuration
 
