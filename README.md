@@ -1,282 +1,392 @@
-# BluPow - Professional Renogy Inverter Integration for Home Assistant
+# 🔋 BluPow - Renogy Device Integration for Home Assistant
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
-[![hacs][hacsbadge]][hacs]
-[![Community Forum][forum-shield]][forum]
-[![GitHub Sponsors][sponsor-shield]][sponsor]
-[![PayPal][paypal-shield]][paypal]
 
-<p align="center">
-  <img src="brand/blupow/logo.png" alt="BluPow Logo" width="200"/>
-</p>
+![Project Maintenance][maintenance-shield]
+[![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
 
-<p align="center">
-  <strong>Transform your Home Assistant into a comprehensive energy monitoring hub!</strong>
-</p>
+**The most comprehensive Home Assistant integration for Renogy BluPow devices! 🚀**
 
-BluPow is a professional-grade Home Assistant custom integration that seamlessly connects your Renogy inverter/charger systems via Bluetooth Low Energy, providing real-time monitoring and control capabilities for off-grid, RV, marine, and residential energy systems.
+Transform your solar power system into a smart, monitored powerhouse with real-time data, beautiful dashboards, and intelligent automation possibilities.
 
-## 🌟 **Why Choose BluPow?**
+![BluPow Integration](BluPow.png)
 
-- ⚡ **22+ Real-Time Sensors** - Complete power system visibility
-- 🔋 **Professional Reliability** - 80%+ connection success rate with intelligent recovery
-- 🏗️ **Enterprise Architecture** - Subprocess isolation and robust error handling  
-- 📱 **Bluetooth Optimized** - Stable wireless connectivity with retry logic
-- 🎯 **HACS Ready** - Easy installation and automatic updates
-- 💝 **Community Driven** - Open source with active development
+## ✨ **What Makes This Special?**
 
-## 📊 **Live Monitoring Dashboard**
+🎯 **Plug & Play**: Just add your device MAC address and you're monitoring immediately  
+📊 **Rich Data**: 17+ sensors for inverters, 20+ for charge controllers  
+🔄 **Rock Solid**: Built-in fallbacks, health monitoring, and automatic recovery  
+🎨 **Beautiful UI**: Clean sensors with proper icons, units, and device classes  
+🛠️ **Smart Tools**: Comprehensive scripts for deployment, testing, and maintenance  
+⚡ **Real-Time**: 30-second updates keep you informed of every change  
 
-Monitor everything that matters in your energy system:
-
-| **Power Flow** | **Battery System** | **Solar Input** | **Load Management** |
-|---|---|---|---|
-| Input Voltage/Current | Battery Voltage | Solar Voltage | Load Current |
-| Output Voltage/Current | Battery SOC (%) | Solar Current | Active Power |
-| AC Frequency | Charging Current | Solar Power | Apparent Power |
-| Power Quality | Battery Temperature | Generation Stats | Load Percentage |
+---
 
 ## 🚀 **Quick Start**
 
-### **HACS Installation (Recommended)**
+### **Option 1: HACS Installation (Recommended)**
+1. **Install HACS** if you haven't already
+2. **Add this repository** to HACS custom repositories
+3. **Search "BluPow"** in HACS and install
+4. **Restart Home Assistant**
+5. **Add Integration**: Settings → Devices & Services → Add Integration → BluPow
+6. **Enter your device details** and enjoy!
 
-1. **Install HACS** if not already installed: [HACS Installation Guide](https://hacs.xyz/docs/setup/download)
+### **Option 2: Manual Installation**
+1. **Download** this repository
+2. **Copy** the `blupow` folder to `config/custom_components/`
+3. **Restart Home Assistant**
+4. **Add Integration**: Settings → Devices & Services → Add Integration → BluPow
 
-2. **Add BluPow Repository**:
-   - Go to HACS → Integrations
-   - Click the "⋮" menu → Custom repositories
-   - Add: `https://github.com/MadGoatHaz/blupow`
-   - Category: Integration
-   - Click "ADD"
+---
 
-3. **Install BluPow**:
-   - Search for "BluPow" in HACS
-   - Click "Download"
-   - Restart Home Assistant
+## 📊 **Supported Devices & Sensors**
 
-4. **Configure Integration**:
-   - Go to Settings → Devices & Services
-   - Click "Add Integration"
-   - Search for "BluPow"
-   - Enter your Renogy device MAC address
-   - Follow the setup wizard
+### **🔌 RIV1230RCH-SPS Inverter** (`D8:B6:73:BF:4F:75`)
+Perfect for monitoring your AC power system, battery management, and load consumption.
 
-### **Manual Installation**
+**17 Real-Time Sensors:**
+| Sensor | Description | Example |
+|--------|-------------|---------|
+| 🔌 **AC Input Voltage** | Grid power voltage | 124.9 V |
+| ⚡ **AC Input Current** | Grid power draw | 2.20 A |
+| 📶 **AC Input Frequency** | Grid frequency | 59.97 Hz |
+| 🔌 **AC Output Voltage** | Inverter output voltage | 124.9 V |
+| ⚡ **AC Output Current** | Load current | 3.20 A |
+| 📶 **AC Output Frequency** | Output frequency | 59.97 Hz |
+| ⚡ **Load Power** | Active AC load | 400 W |
+| 📊 **Load Apparent Power** | Total apparent load | 420 VA |
+| 📈 **Load Percentage** | Inverter load % | 33% |
+| 🔋 **Battery Voltage** | DC battery voltage | 14.40 V |
+| ⚡ **Battery Current** | Charge/discharge current | +15.0 A |
+| 📊 **Battery SOC** | State of charge | 95% |
+| 🔄 **Charging Status** | Current charge mode | bulk_charge |
+| ⚡ **Charging Power** | Battery charging power | 216 W |
+| 🔌 **Line Charging Current** | AC charging current | 12.0 A |
+| ☀️ **Solar Input** | Solar panels (if connected) | 0 W |
+| 🌡️ **Temperature** | Inverter temperature | 35°C |
 
-<details>
-<summary>Click to expand manual installation steps</summary>
+### **☀️ RNG-CTRL-RVR40 Controller** (`C4:D3:6A:66:7E:D4`)
+Ideal for monitoring solar production, MPPT charging, and DC load management.
 
-1. Download the [latest release](https://github.com/MadGoatHaz/blupow/releases)
-2. Extract the files
-3. Copy `custom_components/blupow/` to your Home Assistant config directory
-4. Restart Home Assistant
-5. Add the integration via Settings → Devices & Services
+**20 Real-Time Sensors:**
+| Category | Sensors | Description |
+|----------|---------|-------------|
+| **☀️ Solar Production** | PV Voltage, Current, Power | Monitor solar panel performance |
+| **🔋 Battery Management** | Voltage, Current, SOC, Temperature | Complete battery health tracking |
+| **⚡ MPPT Charging** | Status, Power, Max Power Today | Advanced charge algorithm monitoring |
+| **📊 Energy Statistics** | Daily/Total Generation & Consumption | Track your energy production history |
+| **🔌 DC Load Control** | Load Voltage, Current, Power, Status | Monitor 12V DC loads |
+| **🌡️ System Health** | Controller Temperature, Battery Type | System health and configuration |
 
-</details>
+---
 
-## 📱 **Supported Devices**
+## 🎨 **Beautiful Home Assistant Integration**
 
-### **Verified Compatible**
-- ✅ **Renogy RIV1230RCH-SPS** (Primary test device)
-- ✅ **Renogy RIV Series** (1000W-3000W models)
-- ✅ **BTRIC Series** with Bluetooth connectivity
+### **🏠 Device Cards**
+Each device appears as a separate, properly identified device:
+- **BluPow Inverter** (RIV1230RCH-SPS) - `D8:B6:73:BF:4F:75`
+- **BluPow Solar Controller** (RNG-CTRL-RVR40) - `C4:D3:6A:66:7E:D4`
 
-### **Likely Compatible**
-- 🔄 Most Renogy inverters with Bluetooth and Modbus protocol
-- 🔄 Similar inverters using compatible communication protocols
+### **📊 Smart Entity Naming**
+```
+sensor.blupow_inverter_battery_voltage      # 14.40 V
+sensor.blupow_inverter_load_power           # 400 W
+sensor.blupow_controller_pv_power           # 179 W
+sensor.blupow_controller_battery_soc        # 95%
+```
 
-*Don't see your device? [Open an issue](https://github.com/MadGoatHaz/blupow/issues) and we'll add support!*
+### **🎯 Proper Device Classes**
+- ⚡ **Power sensors** → Energy dashboard integration
+- 🔋 **Battery sensors** → Battery monitoring cards  
+- 🌡️ **Temperature sensors** → Climate monitoring
+- 📊 **Energy sensors** → Historical tracking
 
-## 🎯 **Perfect For**
+---
 
-- 🏠 **Off-Grid Homes** - Monitor battery banks, solar generation, and load consumption
-- 🚐 **RV Enthusiasts** - Track power usage, charging status, and system health
-- ⛵ **Marine Applications** - Monitor boat electrical systems and battery performance  
-- 🏭 **Commercial Installations** - Remote monitoring of power systems
-- 🔬 **Energy Research** - Detailed power analytics and data logging
+## 🛠️ **Advanced Features**
 
-## 🛠️ **System Requirements**
+### **🔄 Dynamic State Management**
+The integration intelligently adapts to real-world conditions:
 
-- **Home Assistant**: 2024.1.0 or newer
-- **HACS**: 1.32.0 or newer (for HACS installation)
-- **Bluetooth**: BLE adapter or built-in Bluetooth
-- **Python**: 3.11+ (included with Home Assistant)
-- **Dependencies**: `bleak>=0.21.0` (automatically installed)
+**🌙 Night Mode (Inverter)**
+- Battery discharging to power AC loads
+- No solar input
+- Grid input minimal/off
+
+**☀️ Day Mode (Charging)**  
+- Grid charging batteries
+- AC passthrough active
+- Solar charging (if connected)
+
+**⚡ Peak Solar (Controller)**
+- Maximum MPPT power tracking
+- Bulk/absorption charging  
+- High PV voltage/current
+
+### **🛡️ Built-in Reliability**
+- **🔄 Automatic Fallbacks**: Multiple data sources ensure continuous operation
+- **💚 Health Monitoring**: Built-in performance tracking and reporting
+- **🔧 Self-Recovery**: Automatic retry logic and connection management
+- **📊 Data Validation**: Smart filtering prevents invalid sensor readings
+
+### **🎯 Smart Availability Logic**
+- **Simple & Reliable**: Available when data exists and coordinator succeeds
+- **No False Unavailable**: Eliminates "unavailable" sensor states
+- **Quick Recovery**: Fast restoration after temporary connection issues
+
+---
 
 ## 🔧 **Configuration**
 
 ### **Basic Setup**
-1. Enable Bluetooth on your Home Assistant system
-2. Ensure your Renogy device has Bluetooth enabled
-3. Find your device MAC address (use Renogy app or Bluetooth scanner)
-4. Add the integration and enter the MAC address
-
-### **Advanced Options**
-- **Update Interval**: 10-300 seconds (default: 30s)
-- **Connection Timeout**: Auto-managed (25-45s adaptive)
-- **Diagnostics**: Enable detailed logging and debugging
-- **Bluetooth Optimization**: Container-specific settings
-
-## 📈 **Features & Capabilities**
-
-### **Real-Time Monitoring**
-- **Input Power**: Voltage, current, frequency from grid/generator
-- **Output Power**: Voltage, current, frequency to loads
-- **Battery System**: Voltage, current, SOC, temperature, charging status
-- **Solar Input**: Voltage, current, power generation
-- **Load Management**: Current draw, active/apparent power, load percentage
-- **System Status**: Device model, ID, connection health
-
-### **Reliability Features**
-- **Automatic Recovery**: Intelligent retry logic with exponential backoff
-- **Smart Caching**: Maintains data during brief connection outages
-- **Dynamic Timeouts**: Adaptive timeouts based on connection performance
-- **Graceful Degradation**: Sensors remain available during temporary issues
-- **Resource Management**: Proper cleanup and memory management
-
-### **Diagnostic Tools**
-- **Connection Testing**: Validate Bluetooth connectivity
-- **Stability Analysis**: Performance monitoring and reporting
-- **Debug Logging**: Comprehensive troubleshooting information
-- **Health Monitoring**: Track connection success rates and performance
-
-## 📊 **Dashboard Examples**
-
-Create stunning energy monitoring dashboards:
-
 ```yaml
-# Example Lovelace card configuration
-type: entities
-title: Power System Status
-entities:
-  - entity: sensor.blupow_battery_voltage
-    name: Battery Voltage
-  - entity: sensor.blupow_battery_percentage
-    name: Battery SOC
-  - entity: sensor.blupow_load_active_power
-    name: Load Power
-  - entity: sensor.blupow_solar_power
-    name: Solar Generation
+# Home Assistant will automatically discover and configure sensors
+# No manual YAML configuration required!
 ```
 
-## 🔍 **Troubleshooting**
+### **Optional: Custom Update Intervals**
+```yaml
+# In configuration.yaml (optional)
+blupow:
+  update_interval: 30  # seconds (default: 30)
+```
 
-### **Common Issues**
+### **Template Sensors (Optional Enhancement)**
+Create calculated sensors for enhanced monitoring:
 
-**Connection Problems**:
-- Verify Bluetooth is enabled on both devices
-- Check MAC address is correct
-- Ensure device is within Bluetooth range
-- Run diagnostic tools: `python3 scripts/verify_connection.py`
-
-**Sensor Unavailable**:
-- Check Home Assistant logs for errors
-- Verify integration is properly configured
-- Restart integration if needed
-- Review [troubleshooting guide](docs/troubleshooting/TROUBLESHOOTING.md)
-
-**Performance Issues**:
-- Adjust update interval (increase for stability)
-- Check Bluetooth interference
-- Monitor connection success rate
-- Use stability test: `python3 scripts/stability_test.py`
-
-## 📚 **Documentation**
-
-### **User Guides**
-- 📖 [Complete Documentation](docs/DOCUMENTATION.md)
-- 🚀 [Installation Guide](docs/IMPLEMENTATION_GUIDE.md)
-- 🔧 [Troubleshooting Guide](docs/troubleshooting/TROUBLESHOOTING.md)
-- 🎯 [Stability Improvements](docs/STABILITY_IMPROVEMENTS.md)
-
-### **Developer Resources**
-- 🏗️ [Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)
-- 🔬 [Testing Guide](docs/development/TESTING_GUIDE.md)
-- 📋 [Project Structure](PROJECT_STRUCTURE.md)
-- 🎨 [Brand Assets](brand/)
-
-## 💝 **Support Development**
-
-BluPow is developed with passion and dedication. Your support helps maintain and expand the project:
-
-### **Financial Support**
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor_on-GitHub-pink?style=for-the-badge&logo=github)](https://github.com/sponsors/MadGoatHaz)
-[![PayPal](https://img.shields.io/badge/Donate_via-PayPal-blue?style=for-the-badge&logo=paypal)](https://paypal.me/MadGoatHaz)
-
-### **Community Support**
-- ⭐ **Star this repository** to show your support
-- 🐛 **Report bugs** and help improve stability
-- 💡 **Suggest features** for future development
-- 📝 **Contribute documentation** and guides
-- 🔧 **Submit pull requests** for improvements
-
-### **Monetization Philosophy**
-We believe in **value-based support** where users contribute what they feel the project is worth to them. All features remain free and open source, with optional support for those who benefit from the project.
-
-## 🤝 **Community & Support**
-
-### **Get Help**
-- 🐛 [Report Issues](https://github.com/MadGoatHaz/blupow/issues)
-- 💬 [Discussions](https://github.com/MadGoatHaz/blupow/discussions)
-- 📧 [Direct Support](mailto:support@blupow.dev)
-- 🏠 [Home Assistant Community](https://community.home-assistant.io/)
-
-### **Contributing**
-We welcome contributions! See our [Contributing Guide](CONTRIBUTING.md) for details on:
-- Code contributions and pull requests
-- Documentation improvements
-- Bug reports and feature requests
-- Testing and validation
-
-## 📄 **License**
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🏆 **Recognition**
-
-- 🌟 **Home Assistant Community** recognition for innovation
-- 🎯 **High Stability Rating** with 80%+ success rate
-- 🔧 **Professional Architecture** with enterprise-grade reliability
-- 📈 **Active Development** with regular updates and improvements
-
-## 🚀 **Roadmap**
-
-### **Upcoming Features**
-- 🔄 **Additional Device Support** (Victron, AIMS, etc.)
-- 📊 **Advanced Analytics** and historical data
-- 🎨 **Custom Dashboard Cards** and visualizations
-- 🔔 **Smart Notifications** and alerting
-- 🌐 **Cloud Integration** options
-
-### **Long-term Vision**
-- 🏭 **Commercial-grade** monitoring solutions
-- 🔌 **Multi-protocol** support (Modbus TCP, CAN, etc.)
-- 🤖 **AI-powered** optimization and predictions
-- 📱 **Mobile app** companion
-- 🌍 **Global community** of energy monitoring enthusiasts
+```yaml
+# configuration.yaml
+template:
+  - sensor:
+      - name: "Solar Efficiency"
+        unit_of_measurement: "%"
+        state: >
+          {% set pv_power = states('sensor.blupow_controller_pv_power') | float %}
+          {% set max_power = states('sensor.blupow_controller_max_charging_power_today') | float %}
+          {% if max_power > 0 %}
+            {{ ((pv_power / max_power) * 100) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+        
+      - name: "Battery Health"
+        state: >
+          {% set voltage = states('sensor.blupow_inverter_battery_voltage') | float %}
+          {% set soc = states('sensor.blupow_inverter_battery_soc') | float %}
+          {% if voltage > 13.0 and soc > 80 %}
+            Excellent
+          {% elif voltage > 12.5 and soc > 50 %}
+            Good
+          {% elif voltage > 12.0 and soc > 20 %}
+            Fair
+          {% else %}
+            Needs Attention
+          {% endif %}
+```
 
 ---
 
-<p align="center">
-  <strong>BluPow - Powering the future of home energy monitoring</strong> 🌟
-</p>
+## 📈 **Dashboard Examples**
 
-<p align="center">
-  Made with ❤️ by the BluPow community
-</p>
+### **🎯 Energy Overview Card**
+```yaml
+# ui-lovelace.yaml
+type: entities
+title: "BluPow Energy System"
+entities:
+  - sensor.blupow_controller_pv_power
+  - sensor.blupow_inverter_load_power  
+  - sensor.blupow_inverter_battery_voltage
+  - sensor.blupow_inverter_battery_soc
+  - sensor.blupow_controller_charging_status
+```
 
-[releases-shield]: https://img.shields.io/github/release/MadGoatHaz/blupow.svg?style=for-the-badge
-[releases]: https://github.com/MadGoatHaz/blupow/releases
-[commits-shield]: https://img.shields.io/github/commit-activity/y/MadGoatHaz/blupow.svg?style=for-the-badge
-[commits]: https://github.com/MadGoatHaz/blupow/commits/main
-[hacs]: https://github.com/hacs/integration
-[hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
-[forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge
-[forum]: https://community.home-assistant.io/
-[license-shield]: https://img.shields.io/github/license/MadGoatHaz/blupow.svg?style=for-the-badge
-[sponsor-shield]: https://img.shields.io/badge/sponsor-GitHub-pink.svg?style=for-the-badge&logo=github
-[sponsor]: https://github.com/sponsors/MadGoatHaz
-[paypal-shield]: https://img.shields.io/badge/donate-PayPal-blue.svg?style=for-the-badge&logo=paypal
-[paypal]: https://paypal.me/MadGoatHaz
+### **📊 Power Flow Card**
+```yaml
+type: picture-elements
+image: /local/solar_system_diagram.png
+elements:
+  - type: state-label
+    entity: sensor.blupow_controller_pv_power
+    top: 20%
+    left: 20%
+  - type: state-label  
+    entity: sensor.blupow_inverter_battery_soc
+    top: 50%
+    left: 50%
+  - type: state-label
+    entity: sensor.blupow_inverter_load_power
+    top: 80%
+    left: 80%
+```
+
+### **⚡ Energy Dashboard Integration**
+BluPow sensors automatically integrate with Home Assistant's Energy Dashboard:
+- **Solar Production**: `sensor.blupow_controller_power_generation_today`
+- **Battery Charge**: `sensor.blupow_inverter_charging_power`  
+- **Home Consumption**: `sensor.blupow_inverter_load_power`
+
+---
+
+## 🚨 **Troubleshooting**
+
+### **🔍 Quick Diagnosis**
+```bash
+# Check integration health
+python3 scripts/quick_integration_test.py
+
+# Comprehensive system test
+python3 scripts/comprehensive_integration_test.py
+```
+
+### **❌ Common Issues & Solutions**
+
+**Problem: Sensors show "Unavailable"**
+```bash
+# Solution: Deploy stability fixes
+python3 deploy_production_stability.py
+```
+
+**Problem: Device not connecting**
+```bash
+# Solution: Test Bluetooth connectivity
+python3 scripts/bluetooth_connection_fix.py
+python3 scripts/direct_device_test.py
+```
+
+**Problem: Duplicate sensors**
+```bash
+# Solution: Clean up and re-add integration
+python3 cleanup_duplicate_sensors.py
+# Then re-add integration via HA UI
+```
+
+### **🔧 Advanced Diagnostics**
+```bash
+# Health monitoring
+python3 scripts/health_monitor.py
+
+# Complete diagnostics
+python3 scripts/diagnostics.py
+
+# Home Assistant integration recovery
+python3 scripts/integration_recovery.py
+```
+
+---
+
+## 🛠️ **Development & Contribution**
+
+### **🧪 Testing Your Changes**
+```bash
+# Quick integration test
+python3 scripts/quick_integration_test.py
+
+# Full test suite
+python3 scripts/comprehensive_integration_test.py
+
+# Validate all components
+python3 scripts/validate_integration.py
+```
+
+### **🚀 Deployment**
+```bash
+# Deploy to Home Assistant
+python3 deploy_production_stability.py
+
+# Deploy specific fixes
+python3 scripts/deploy_production_fix.py
+```
+
+### **📁 Project Structure**
+```
+blupow/
+├── 🔌 Core Integration
+│   ├── __init__.py              # Integration setup
+│   ├── manifest.json            # Integration manifest
+│   ├── config_flow.py           # Configuration UI
+│   ├── coordinator.py           # Data coordination
+│   ├── sensor.py                # Sensor definitions
+│   ├── blupow_client.py         # Device communication
+│   └── const.py                 # Constants & sensors
+├── 🛠️ Tools & Scripts
+│   ├── scripts/                 # Deployment & testing tools
+│   ├── deploy_*.py              # Deployment scripts
+│   └── cleanup_*.py             # Maintenance scripts
+├── 📚 Documentation
+│   ├── docs/                    # Comprehensive guides
+│   ├── README.md                # This file
+│   └── SENSOR_FIX_SUMMARY.md    # Recent fixes
+└── 🎨 Assets
+    ├── brand/                   # HACS assets
+    └── BluPow.png               # Integration logo
+```
+
+### **🤝 Contributing**
+1. **Fork** the repository
+2. **Create** a feature branch
+3. **Test** your changes with the included tools
+4. **Submit** a pull request
+
+---
+
+## 🆘 **Support**
+
+### **📖 Documentation**
+- **[Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)** - Deep dive into how it works
+- **[Device Discovery Guide](docs/DEVICE_DISCOVERY_GUIDE.md)** - Finding your device MAC
+- **[Implementation Guide](docs/IMPLEMENTATION_GUIDE.md)** - Advanced setup
+- **[Troubleshooting Guide](docs/troubleshooting/TROUBLESHOOTING.md)** - Common issues
+
+### **🐛 Issues & Feature Requests**
+- **[GitHub Issues](https://github.com/yourusername/blupow/issues)** - Report bugs or request features
+- **[Discussions](https://github.com/yourusername/blupow/discussions)** - Community support
+
+### **💬 Community**
+- **Home Assistant Community Forum** - [BluPow Integration Thread]
+- **Discord** - Join the Home Assistant community
+
+---
+
+## 📜 **License**
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 **Acknowledgments**
+
+- **Renogy** for creating excellent solar equipment
+- **Home Assistant** community for the amazing platform
+- **Contributors** who helped make this integration possible
+- **Beta testers** who provided valuable feedback
+
+---
+
+## ☕ **Support Development**
+
+If this integration has saved you time and enhanced your solar monitoring experience, consider supporting development:
+
+[![Buy Me A Coffee][buymecoffeebadge]][buymecoffee]
+
+---
+
+**🎉 Happy Solar Monitoring! ☀️⚡🏠**
+
+*Transform your Renogy BluPow devices into smart, monitored components of your Home Assistant ecosystem!*
+
+---
+
+<!-- Badges -->
+[releases-shield]: https://img.shields.io/github/release/yourusername/blupow.svg?style=for-the-badge
+[releases]: https://github.com/yourusername/blupow/releases
+[commits-shield]: https://img.shields.io/github/commit-activity/y/yourusername/blupow.svg?style=for-the-badge  
+[commits]: https://github.com/yourusername/blupow/commits/main
+[license-shield]: https://img.shields.io/github/license/yourusername/blupow.svg?style=for-the-badge
+[maintenance-shield]: https://img.shields.io/badge/maintainer-@yourusername-blue.svg?style=for-the-badge
+[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
+[buymecoffee]: https://www.buymeacoffee.com/yourusername 

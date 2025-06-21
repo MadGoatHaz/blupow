@@ -1,98 +1,253 @@
-# Byte-compiled / optimized / DLL files
+# 🔋 BluPow Integration - Git Ignore Configuration
+
+# ===============================================
+# 🐍 Python
+# ===============================================
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are created by a pyinstaller script from a spec file
-*.spec
-
-# Installer logs
+*.egg-info/
+dist/
+build/
+.Python
 pip-log.txt
 pip-delete-this-directory.txt
+.cache/
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
+# ===============================================
+# 📊 Logs & Temporary Files  
+# ===============================================
 *.log
-local_settings.py
-db.sqlite3
+*.log.*
+*.tmp
+*.temp
+*_temp*
+*_tmp*
+log/
+logs/
+temp/
+tmp/
 
-# Flask stuff:
-instance/
-.webassets-cache
+# ===============================================
+# 🏠 Home Assistant Specific
+# ===============================================
+# Development backups
+*_backup_*
+backup_*/
+backups/misc/*
 
-# Scrapy stuff:
-.scrapy
+# Device registries (contain personal MAC addresses)
+*device_registry*.json
+*entity_registry*.json
 
-# Sphinx documentation
-docs/_build/
+# Personal configuration data
+*personal*
+*private*
+config_personal/
 
-# PyBuilder
-target/
+# ===============================================
+# 🛠️ Development & Testing
+# ===============================================
+# Test results and reports
+test_results/
+coverage/
+.coverage
+*.cover
+htmlcov/
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Development artifacts  
+*_dev_*
+*_test_*
+*_debug_*
+development_*/
+debug/
 
-# pyenv
-.python-version
+# IDE and editor files
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
 
-# celery
-celerybeat-schedule
+# ===============================================
+# 🔧 Build & Deployment
+# ===============================================
+# Deployment artifacts
+*_deploy_*
+*_deployment_*
+deploy_temp/
+.deploy/
 
-# SageMath parsed files
-*.sage.py
+# Production temporary files
+production_temp/
+*_production_temp*
 
-# Environments
+# ===============================================
+# 📦 Dependencies & Packages
+# ===============================================
+node_modules/
+.npm
+.yarn/
+yarn-error.log
+
+# Python virtual environments
+venv/
+env/
 .env
 .venv
-env/
-venv/
 ENV/
-env.bak/
-venv.bak/
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# ===============================================
+# 🔐 Security & Credentials
+# ===============================================
+# Never commit sensitive data
+*.key
+*.pem
+*.p12
+*.pfx
+secrets.yaml
+secrets.json
+.secrets
+credentials/
+auth/
 
-# Pyre type checker
-.pyre/ 
+# API keys and tokens
+*api_key*
+*token*
+*secret*
+.env.local
+.env.production
+
+# ===============================================
+# 🗂️ Archives & Compressed Files
+# ===============================================
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ===============================================
+# 📱 Platform Specific
+# ===============================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# ===============================================
+# 🎯 Project Specific Exclusions
+# ===============================================
+# BluPow specific temporary files
+blupow_temp*
+*blupow_backup*
+super_probe_temp*
+coordinator_temp*
+
+# Development logs
+stability_test_*.log
+device_config_*.log
+bluetooth_timing_test.log
+blupow_discovery.log
+blupow_super_probe*.log
+production_master_run.log
+
+# Temporary Renogy BT files (keep the folder structure)
+temp_renogy_bt/
+renogy_bt_temp/
+
+# Script outputs and results
+results/temp/
+scripts/temp/
+scripts/*.log
+
+# Personal device configurations
+super_probe_config_personal.json
+device_config_personal.json
+
+# ===============================================
+# 📚 Documentation Drafts
+# ===============================================
+# Keep published docs, exclude drafts
+*_draft*
+*_wip*
+docs/drafts/
+docs/temp/
+*.md.bak
+
+# ===============================================
+# ✅ ALLOW THESE FILES (Important for project)
+# ===============================================
+# Core integration files (always include)
+!__init__.py
+!manifest.json
+!config_flow.py
+!coordinator.py
+!sensor.py
+!blupow_client.py
+!const.py
+!strings.json
+!hacs.json
+
+# Documentation (keep public docs)
+!README.md
+!CHANGELOG.md
+!INSTALLATION.md
+!LICENSE
+!CONTRIBUTING.md
+
+# Essential project files
+!requirements.txt
+!setup.py
+!pyproject.toml
+
+# HACS and branding
+!brand/
+!translations/
+
+# Keep important scripts (exclude logs)
+!scripts/*.py
+!deploy_*.py
+!cleanup_*.py
+
+# ===============================================
+# 📝 Notes for Contributors
+# ===============================================
+# 
+# This .gitignore is designed to:
+# 1. Keep the repository clean and professional
+# 2. Exclude personal/sensitive information  
+# 3. Prevent accidental commits of temporary files
+# 4. Maintain project structure while excluding clutter
+# 5. Support multiple development environments
+#
+# When adding new ignores:
+# - Use comments to explain WHY something is ignored
+# - Group related patterns together
+# - Test that essential files are still included
+# - Consider cross-platform compatibility
+#
+# =============================================== 

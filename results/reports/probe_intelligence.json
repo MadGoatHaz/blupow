@@ -1,0 +1,13 @@
+{
+  "session_start": "2025-06-20T19:09:57.847913",
+  "last_updated": "2025-06-20T19:10:12.895315",
+  "scan_count": 1,
+  "devices": {
+    "7B:4B:D3:7B:1F:55": {
+      "mac_address": "7B:4B:D3:7B:1F:55",
+      "name": "7B-4B-D3-7B-1F-55",
+      "discovery_count": 1,
+      "first_seen": "2025-06-20T19:10:12.894587",
+      "last_seen": "2025-06-20T19:10:12.894587",
+      "discovery_pattern": [
+        

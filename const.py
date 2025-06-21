@@ -1,8 +1,8 @@
-"""Constants for the BluPow: Temperature/Humidity Bluetooth integration."""
+"""Constants for the BluPow: Renewable Energy Management Integration."""
 from __future__ import annotations
 
 import logging
-from typing import Final
+from typing import Final, Dict
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -17,114 +17,130 @@ from homeassistant.const import (
     UnitOfTemperature,
     UnitOfTime,
     UnitOfFrequency,
+    UnitOfEnergy,
 )
 
 DOMAIN: Final = "blupow"
 
-# Characteristic UUIDs - Updated for actual device characteristics
+# Connection and BLE UUIDs
 MODEL_NUMBER_CHAR_UUID: Final = "00002a24-0000-1000-8000-00805f9b34fb"
 MANUFACTURER_CHAR_UUID: Final = "00002a29-0000-1000-8000-00805f9b34fb"
 
-# Device-specific UUIDs discovered from tuner168.com BT-TH device
 DEVICE_SERVICE_UUID: Final = "0000ffd0-0000-1000-8000-00805f9b34fb"
 DEVICE_READ_WRITE_CHAR: Final = "0000ffd1-0000-1000-8000-00805f9b34fb"
 DEVICE_NOTIFY_CHAR: Final = "0000ffd2-0000-1000-8000-00805f9b34fb"
-DEVICE_WRITE_CHAR: Final = "0000ffd3-0000-1000-8000-00805f9b34fb"
-DEVICE_READ_CHAR: Final = "0000ffd4-0000-1000-8000-00805f9b34fb"
-DEVICE_SPECIAL_CHAR: Final = "0000ffd5-0000-1000-8000-00805f9b34fb"
 
-# Correct Renogy UUIDs from cyrils/renogy-bt protocol
-RENOGY_SERVICE_UUID: Final = "0000ffd0-0000-1000-8000-00805f9b34fb"  # Main service
-RENOGY_TX_CHAR_UUID: Final = "0000ffd1-0000-1000-8000-00805f9b34fb"  # TX (write to device)
-RENOGY_RX_CHAR_UUID: Final = "0000fff1-0000-1000-8000-00805f9b34fb"  # RX (notifications)
-RX_SERVICE_UUID: Final = "0000fff0-0000-1000-8000-00805f9b34fb"  # RX service
-RENOGY_MANUFACTURER_ID: Final = 0x7DE0  # Renogy manufacturer ID
+RENOGY_SERVICE_UUID: Final = "0000ffd0-0000-1000-8000-00805f9b34fb"
+RENOGY_TX_CHAR_UUID: Final = "0000ffd1-0000-1000-8000-00805f9b34fb"
+RENOGY_RX_CHAR_UUID: Final = "0000fff1-0000-1000-8000-00805f9b34fb"
+RX_SERVICE_UUID: Final = "0000fff0-0000-1000-8000-00805f9b34fb"
 
 # Connection timeouts
 DEFAULT_SCAN_TIMEOUT: Final = 10.0
 DEFAULT_CONNECT_TIMEOUT: Final = 20.0
+CONF_UPDATE_INTERVAL = "update_interval"
+DEFAULT_UPDATE_INTERVAL = 30
 
-# Sensor Descriptions - RENOGY INVERTER (RIV1230RCH-SPS) OPTIMIZED FOR ENERGY DASHBOARD
-# These are the 22 sensors for the currently supported inverter model.
-DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
-    # Inverter Model Information
+# DEVICE IDENTIFICATION
+DEVICE_TYPES: Dict[str, str] = {
+    "D8:B6:73:BF:4F:75": "inverter",    # RIV1230RCH-SPS Inverter
+    "C4:D3:6A:66:7E:D4": "controller"   # RNG-CTRL-RVR40 Controller
+}
+
+# ============================================================================
+# INVERTER SENSORS - RIV1230RCH-SPS (AC Power Management System)
+# ============================================================================
+INVERTER_SENSORS: tuple[SensorEntityDescription, ...] = (
+    # Device Information
     SensorEntityDescription(
         key="model",
-        name="Inverter Model",
+        name="Model",
         icon="mdi:information-outline",
     ),
     SensorEntityDescription(
-        key="device_id",
+        key="device_id", 
         name="Device ID",
         icon="mdi:identifier",
     ),
-    
-    # AC Input (Mains Power)
     SensorEntityDescription(
-        key="input_voltage",
+        key="firmware_version",
+        name="Firmware Version",
+        icon="mdi:chip",
+    ),
+    
+    # AC INPUT MONITORING (Grid/Line Power)
+    SensorEntityDescription(
+        key="ac_input_voltage",
         name="AC Input Voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+        icon="mdi:flash",
     ),
     SensorEntityDescription(
-        key="input_current",
-        name="AC Input Current",
+        key="ac_input_current",
+        name="AC Input Current", 
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:current-ac",
     ),
     SensorEntityDescription(
-        key="input_frequency",
+        key="ac_input_frequency",
         name="AC Input Frequency",
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:sine-wave",
     ),
     
-    # AC Output (Load Power)
+    # AC OUTPUT MONITORING (Inverter Output)
     SensorEntityDescription(
-        key="output_voltage",
+        key="ac_output_voltage",
         name="AC Output Voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+        icon="mdi:flash-outline",
     ),
     SensorEntityDescription(
-        key="output_current",
+        key="ac_output_current",
         name="AC Output Current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:current-ac",
     ),
     SensorEntityDescription(
-        key="output_frequency",
+        key="ac_output_frequency",
         name="AC Output Frequency",
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:sine-wave",
     ),
     
-    # Load Monitoring
+    # LOAD MONITORING (AC Loads Connected to Inverter)
     SensorEntityDescription(
         key="load_active_power",
-        name="AC Load Power",
+        name="Load Power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
-    ),
+        icon="mdi:lightning-bolt",
+    ), 
     SensorEntityDescription(
         key="load_apparent_power",
-        name="AC Apparent Power",
+        name="Load Apparent Power", 
         native_unit_of_measurement="VA",
-        icon="mdi:flash",
+        icon="mdi:flash-triangle",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
     ),
@@ -135,6 +151,7 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:current-dc",
     ),
     SensorEntityDescription(
         key="load_percentage",
@@ -144,16 +161,8 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
     ),
-    SensorEntityDescription(
-        key="line_charging_current",
-        name="Line Charging Current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
-    ),
     
-    # Battery Bank
+    # BATTERY MANAGEMENT (Connected to Inverter)
     SensorEntityDescription(
         key="battery_voltage",
         name="Battery Voltage",
@@ -161,27 +170,30 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:battery",
     ),
     SensorEntityDescription(
-        key="battery_percentage",
-        name="Battery SOC",
+        key="battery_soc",
+        name="Battery State of Charge",
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
+        icon="mdi:battery-80",
     ),
     SensorEntityDescription(
         key="charging_current",
-        name="Battery Charging Current",
+        name="Battery Current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:battery-charging",
     ),
     SensorEntityDescription(
         key="charging_status",
-        name="Charging Status",
-        icon="mdi:battery-charging",
+        name="Charging Status", 
+        icon="mdi:battery-charging-outline",
     ),
     SensorEntityDescription(
         key="charging_power",
@@ -190,9 +202,19 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
+        icon="mdi:battery-plus",
+    ),
+    SensorEntityDescription(
+        key="line_charging_current",
+        name="Line Charging Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        icon="mdi:current-dc",
     ),
     
-    # Solar Input (if connected)
+    # SOLAR INPUT (Solar panels connected to inverter - usually none)
     SensorEntityDescription(
         key="solar_voltage",
         name="Solar Input Voltage",
@@ -200,6 +222,7 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+        icon="mdi:solar-panel",
     ),
     SensorEntityDescription(
         key="solar_current",
@@ -208,6 +231,7 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
+        icon="mdi:solar-panel",
     ),
     SensorEntityDescription(
         key="solar_power",
@@ -216,80 +240,239 @@ DEVICE_SENSORS: tuple[SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
+        icon="mdi:solar-power",
     ),
     
-    # System Health
+    # SYSTEM HEALTH
     SensorEntityDescription(
-        key="temperature",
+        key="inverter_temperature",
         name="Inverter Temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+        icon="mdi:thermometer",
     ),
 )
 
-CONF_UPDATE_INTERVAL = "update_interval"
-DEFAULT_UPDATE_INTERVAL = 30
+# ============================================================================
+# CONTROLLER SENSORS - RNG-CTRL-RVR40 (Solar MPPT Charge Controller)
+# ============================================================================
+CONTROLLER_SENSORS: tuple[SensorEntityDescription, ...] = (
+    # Device Information
+    SensorEntityDescription(
+        key="model",
+        name="Model",
+        icon="mdi:information-outline",
+    ),
+    SensorEntityDescription(
+        key="device_id",
+        name="Device ID", 
+        icon="mdi:identifier",
+    ),
+    SensorEntityDescription(
+        key="firmware_version",
+        name="Firmware Version",
+        icon="mdi:chip",
+    ),
+    
+    # SOLAR PV INPUT (Solar Panels)
+    SensorEntityDescription(
+        key="pv_voltage",
+        name="Solar Panel Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        icon="mdi:solar-panel",
+    ),
+    SensorEntityDescription(
+        key="pv_current",
+        name="Solar Panel Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        icon="mdi:solar-panel",
+    ),
+    SensorEntityDescription(
+        key="pv_power",
+        name="Solar Panel Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        icon="mdi:solar-power",
+    ),
+    
+    # BATTERY MANAGEMENT (Connected to Controller)
+    SensorEntityDescription(
+        key="battery_voltage",
+        name="Battery Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        icon="mdi:battery",
+    ),
+    SensorEntityDescription(
+        key="battery_current",
+        name="Battery Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        icon="mdi:battery-charging",
+    ),
+    SensorEntityDescription(
+        key="battery_soc",
+        name="Battery State of Charge",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        icon="mdi:battery-80",
+    ),
+    SensorEntityDescription(
+        key="battery_temperature",
+        name="Battery Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        icon="mdi:thermometer",
+    ),
+    SensorEntityDescription(
+        key="battery_type",
+        name="Battery Type",
+        icon="mdi:battery-outline",
+    ),
+    
+    # CHARGING CONTROL
+    SensorEntityDescription(
+        key="charging_status",
+        name="Charging Status",
+        icon="mdi:battery-charging-outline",
+    ),
+    SensorEntityDescription(
+        key="charging_power",
+        name="Charging Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        icon="mdi:battery-plus",
+    ),
+    SensorEntityDescription(
+        key="max_charging_power_today",
+        name="Max Charging Power Today",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        icon="mdi:battery-plus-outline",
+    ),
+    
+    # ENERGY STATISTICS  
+    SensorEntityDescription(
+        key="charging_amp_hours_today",
+        name="Charging Amp Hours Today",
+        native_unit_of_measurement="Ah",
+        icon="mdi:battery-plus",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="discharging_amp_hours_today",
+        name="Discharging Amp Hours Today",
+        native_unit_of_measurement="Ah",
+        icon="mdi:battery-minus",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="power_generation_today",
+        name="Power Generation Today",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=0,
+        icon="mdi:solar-power",
+    ),
+    SensorEntityDescription(
+        key="power_consumption_today",
+        name="Power Consumption Today",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=0,
+        icon="mdi:flash-outline",
+    ),
+    SensorEntityDescription(
+        key="power_generation_total",
+        name="Total Power Generation",
+        native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        suggested_display_precision=0,
+        icon="mdi:solar-power-variant",
+    ),
+    
+    # DC LOAD MONITORING (12V Loads)
+    SensorEntityDescription(
+        key="load_status",
+        name="Load Status",
+        icon="mdi:power-plug",
+    ),
+    SensorEntityDescription(
+        key="load_voltage",
+        name="Load Voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        icon="mdi:flash-outline",
+    ),
+    SensorEntityDescription(
+        key="load_current",
+        name="Load Current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        icon="mdi:current-dc",
+    ),
+    SensorEntityDescription(
+        key="load_power",
+        name="Load Power",
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        icon="mdi:lightning-bolt-outline",
+    ),
+    
+    # CONTROLLER HEALTH
+    SensorEntityDescription(
+        key="controller_temperature",
+        name="Controller Temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        icon="mdi:thermometer",
+    ),
+)
 
-# --- Obsolete Renogy Charge Controller Register Definitions ---
-# This class represents the register layout for the Renogy charge controller,
-# which was the device this integration was originally, and incorrectly,
-# built for. It is preserved here as a historical artifact to provide
-# context for the project's evolution, as detailed in docs/PROJECT_HISTORY.md.
-# It is not used anywhere in the current inverter-based implementation.
-#
-# class RenogyRegisters:
-#     """Register addresses for Renogy devices."""
-#
-#     # --- Device Information (Read in a separate, initial query) ---
-#     MODEL = 0x000A
-#     SOFTWARE_VERSION = 0x000C
-#     HARDWARE_VERSION = 0x000E
-#
-#     # --- Real-time Data Block (Read in a single query) ---
-#     READ_BLOCK_START = 0x0100
-#     READ_BLOCK_SIZE = 34 # Number of registers to read from the start address
-#
-#     # --- Register Offsets from READ_BLOCK_START (0x0100) ---
-#     # These are indices into the list of registers returned by the block read
-#     BATTERY_SOC = 0
-#     BATTERY_VOLTAGE = 1
-#     BATTERY_CURRENT_RAW = 2  # Combined with next register
-#     SOLAR_VOLTAGE = 3
-#     SOLAR_CURRENT = 4
-#     SOLAR_POWER = 5
-#     LOAD_VOLTAGE = 6
-#     LOAD_CURRENT = 7
-#     LOAD_POWER = 8
-#     CONTROLLER_TEMP = 9
-#     BATTERY_TEMP = 10
-#
-#     # Daily Statistics (relative to 0x0100)
-#     BATTERY_MIN_VOLTAGE_TODAY = 11
-#     BATTERY_MAX_VOLTAGE_TODAY = 12
-#     CHARGER_MAX_CURRENT_TODAY = 13
-#     DISCHARGER_MAX_CURRENT_TODAY = 14
-#     CHARGER_MAX_POWER_TODAY = 15
-#     DISCHARGER_MAX_POWER_TODAY = 16
-#     CHARGING_AMP_HOURS_TODAY = 17
-#     DISCHARGING_AMP_HOURS_TODAY = 18
-#     POWER_GENERATION_TODAY = 19
-#     POWER_CONSUMPTION_TODAY = 20
-#
-#     # Historical Data (relative to 0x0100)
-#     TOTAL_OPERATING_DAYS = 21
-#     TOTAL_BATTERY_OVER_DISCHARGES = 22
-#     TOTAL_BATTERY_FULL_CHARGES = 23
-#     TOTAL_CHARGING_AMP_HOURS = 24 # 2 registers
-#     TOTAL_POWER_GENERATED = 26 # 2 registers
-#
-#     # Status and Settings (relative to 0x0100)
-#     CHARGING_STATUS = 28
-#
-#     # Aliases for correct mapping
-#     DAILY_POWER_GENERATION = POWER_GENERATION_TODAY
-#     DAILY_POWER_CONSUMPTION = POWER_CONSUMPTION_TODAY
-#     POWER_GENERATION_TOTAL_L = TOTAL_POWER_GENERATED
-#     POWER_GENERATION_TOTAL_H = TOTAL_POWER_GENERATED + 1
+# ============================================================================
+# DEVICE SENSOR MAPPING FUNCTION
+# ============================================================================
+def get_device_sensors(mac_address: str) -> tuple[SensorEntityDescription, ...]:
+    """Return appropriate sensors based on device MAC address."""
+    device_type = DEVICE_TYPES.get(mac_address, "inverter")
+    
+    if device_type == "controller":
+        return CONTROLLER_SENSORS
+    else:
+        return INVERTER_SENSORS
 

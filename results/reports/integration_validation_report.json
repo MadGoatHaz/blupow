@@ -29,34 +29,44 @@
     },
     "Client Functionality Test": {
       "success": false,
-      "error": "'BluPowClient' object has no attribute 'parse_inverter_stats'"
+      "error": "cannot import name 'ConnectionHealth' from 'blupow_client' (/home/madgoat/opt/Projects/blupow/blupow_client.py)"
     },
     "Coordinator Structure Test": {
       "success": false,
-      "error": "cannot import name 'bluetooth' from 'MockModule' (unknown location)"
+      "error": "cannot import name 'CONF_MAC' from 'MockModule' (unknown location)"
     },
     "Sensor Definitions Test": {
       "success": false,
-      "error": "cannot import name 'UnitOfEnergy' from 'MockModule' (unknown location)"
+      "error": "cannot import name 'UnitOfTime' from 'MockModule' (unknown location)"
     },
     "Error Handling Test": {
       "success": false,
-      "error": "'BluPowClient' object has no attribute 'parse_inverter_stats'"
+      "error": "'dict' object has no attribute 'record_connection_attempt'"
     },
     "Health Monitoring Test": {
       "success": false,
-      "error": "cannot import name 'bluetooth' from 'MockModule' (unknown location)"
+      "error": "cannot import name 'CONF_MAC' from 'MockModule' (unknown location)"
     },
     "Data Processing Test": {
       "success": false,
-      "error": "'BluPowClient' object has no attribute 'parse_inverter_stats'"
+      "details": {
+        "test_data_has_values": true,
+        "test_data_has_model": false,
+        "test_data_has_voltages": true,
+        "test_data_has_currents": true,
+        "offline_data_structure": true,
+        "offline_data_has_status": true,
+        "reasonable_voltage": true
+      },
+      "test_data_fields": 20,
+      "offline_data_fields": 20
     },
     "Integration Simulation": {
       "success": false,
-      "error": "cannot import name 'bluetooth' from 'MockModule' (unknown location)"
+      "error": "cannot import name 'CONF_MAC' from 'MockModule' (unknown location)"
     }
   },
-  "timestamp": "2025-06-20T15:49:37.281431",
+  "timestamp": "2025-06-21T07:26:38.498833",
   "integration_status": "NEEDS_ATTENTION",
   "recommendations": [
     "\ud83d\udd27 Fix component import issues",
