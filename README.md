@@ -355,18 +355,24 @@ blupow/
 
 ---
 
-## 📜 **License**
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 ## 🙏 **Acknowledgments**
 
+- **[Cyril](https://github.com/cyrils)** for the foundational [renogy-bt](https://github.com/cyrils/renogy-bt) library that makes this integration possible
 - **Renogy** for creating excellent solar equipment
 - **Home Assistant** community for the amazing platform
 - **Contributors** who helped make this integration possible
 - **Beta testers** who provided valuable feedback
+
+## 📜 **License & Attribution**
+
+This project is licensed under **GPL-3.0** in compliance with the [renogy-bt](https://github.com/cyrils/renogy-bt) library it's based on.
+
+**Based on:** [renogy-bt by Cyril](https://github.com/cyrils/renogy-bt) (GPL-3.0)  
+**Integration by:** Garrett Hazlett ([@MadGoatHaz](https://github.com/MadGoatHaz))
 
 ---
 
@@ -396,7 +402,7 @@ If this integration has saved you time and enhanced your solar monitoring experi
 [releases]: https://github.com/MadGoatHaz/blupow/releases
 [commits-shield]: https://img.shields.io/github/commit-activity/y/MadGoatHaz/blupow.svg?style=for-the-badge  
 [commits]: https://github.com/MadGoatHaz/blupow/commits/main
-[license-shield]: https://img.shields.io/github/license/MadGoatHaz/blupow.svg?style=for-the-badge
+[license-shield]: https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=for-the-badge
 [maintenance-shield]: https://img.shields.io/badge/maintainer-Garrett%20Hazlett%20%40MadGoatHaz-blue.svg?style=for-the-badge
 [sponsors-shield]: https://img.shields.io/badge/GitHub-Sponsors-ff69b4.svg?style=for-the-badge
 [sponsors]: https://github.com/sponsors/MadGoatHaz
