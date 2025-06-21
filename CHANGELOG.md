@@ -231,10 +231,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 📞 **Support & Feedback**
 
-- **🐛 Bug Reports**: [GitHub Issues](https://github.com/yourusername/blupow/issues)
-- **💡 Feature Requests**: [GitHub Discussions](https://github.com/yourusername/blupow/discussions)
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)
+- **💡 Feature Requests**: [GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)
 - **💬 Community Support**: [Home Assistant Forum](https://community.home-assistant.io)
-- **📧 Direct Contact**: [Email Support](mailto:support@yourdomain.com)
+- **📧 Direct Contact**: ghazlett@gmail.com
+- **💖 Support Development**: [GitHub Sponsors](https://github.com/sponsors/MadGoatHaz) | [PayPal](https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD)
 
 ---
 
