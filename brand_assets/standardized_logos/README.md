@@ -41,11 +41,12 @@ This directory contains high-quality, standardized versions of the BluPow logo o
 
 ## 📋 **Creation Details**
 
-**Source**: Original BluPow.png (223x237 pixels)
-**Method**: ImageMagick conversion with professional scaling
-**Background**: Transparent with centered positioning
-**Color Space**: 8-bit RGBA
-**Optimization**: Balanced quality/size ratio
+**Original Source**: BluPow-original-223x237.png (223x237 pixels)  
+**Current Main**: BluPow.png (512x512 pixels, high-quality)  
+**Method**: ImageMagick conversion with professional scaling  
+**Background**: Transparent with centered positioning  
+**Color Space**: 8-bit RGBA  
+**Optimization**: Balanced quality/size ratio  
 
 ## 🚀 **Recommended Usage**
 
@@ -53,6 +54,8 @@ For most applications, use the **High Quality** versions:
 - `blupow-256-hq.png` - Primary choice for standard displays
 - `blupow-512-hq.png` - Primary choice for high-DPI displays  
 - `blupow-128-hq.png` - For small UI elements only
+
+**Main Logo**: The repository's main `BluPow.png` is now the professional 512x512 HQ version for optimal GitHub display and documentation presentation.
 
 ## 📱 **Platform Compatibility**
 
@@ -67,4 +70,5 @@ For most applications, use the **High Quality** versions:
 
 **Generated**: June 2025  
 **Source Repository**: https://github.com/MadGoatHaz/blupow  
-**Original Logo**: [BluPow.png](https://github.com/MadGoatHaz/blupow/blob/main/BluPow.png) 
+**Original Logo**: [BluPow-original-223x237.png](https://github.com/MadGoatHaz/blupow/blob/main/BluPow-original-223x237.png)  
+**Current Main**: [BluPow.png](https://github.com/MadGoatHaz/blupow/blob/main/BluPow.png) (512x512 HQ) 
