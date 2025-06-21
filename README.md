@@ -1,13 +1,17 @@
 # 🔋 BluPow - Renogy Device Integration for Home Assistant
 
+<div align="center">
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge)](https://github.com/custom-components/hacs)
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
 
-![Project Maintenance][maintenance-shield]
+[![Project Maintenance][maintenance-shield]][maintenance-url]
 [![GitHub Sponsors][sponsors-shield]][sponsors]
 [![PayPal Donation][paypal-shield]][paypal]
+
+</div>
 
 **The most comprehensive Home Assistant integration for Renogy BluPow devices! 🚀**
 
@@ -355,10 +359,6 @@ blupow/
 
 ---
 
-
-
----
-
 ## 🙏 **Acknowledgments**
 
 - **[Cyril](https://github.com/cyrils)** for the foundational [renogy-bt](https://github.com/cyrils/renogy-bt) library that makes this integration possible
@@ -403,7 +403,8 @@ If this integration has saved you time and enhanced your solar monitoring experi
 [commits-shield]: https://img.shields.io/github/commit-activity/y/MadGoatHaz/blupow.svg?style=for-the-badge  
 [commits]: https://github.com/MadGoatHaz/blupow/commits/main
 [license-shield]: https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=for-the-badge
-[maintenance-shield]: https://img.shields.io/badge/maintainer-Garrett%20Hazlett%20%40MadGoatHaz-blue.svg?style=for-the-badge
+[maintenance-shield]: https://img.shields.io/badge/maintainer-@MadGoatHaz-blue.svg?style=for-the-badge
+[maintenance-url]: https://github.com/MadGoatHaz
 [sponsors-shield]: https://img.shields.io/badge/GitHub-Sponsors-ff69b4.svg?style=for-the-badge
 [sponsors]: https://github.com/sponsors/MadGoatHaz
 [paypal-shield]: https://img.shields.io/badge/PayPal-Donate-blue.svg?style=for-the-badge
