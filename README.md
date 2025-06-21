@@ -1,4 +1,8 @@
-# 🔋 BluPow - Renogy Device Integration for Home Assistant
+<div align="center">
+
+# BluPow - Renogy Device Integration for Home Assistant
+
+</div>
 
 <div align="center">
 
@@ -16,6 +20,8 @@
 **The most comprehensive Home Assistant integration for Renogy BluPow devices! 🚀**
 
 Transform your solar power system into a smart, monitored powerhouse with real-time data, beautiful dashboards, and intelligent automation possibilities.
+
+</div>
 
 <div align="center">
 <img src="BluPow.png" alt="BluPow Integration" width="300"/>
