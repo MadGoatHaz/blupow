@@ -4,6 +4,5 @@
     "country": ["US", "CA", "GB", "AU", "DE", "FR"],
     "homeassistant": "2024.1.0",
     "hacs": "1.32.0",
-    "iot_class": "Local Polling",
     "render_readme": true
 } 
