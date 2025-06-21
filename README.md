@@ -29,29 +29,29 @@ Monitor your solar power system with real-time data, automated dashboards, and s
 
 ## Features
 
-**Effortless Setup**: Add your device MAC address and start monitoring immediately  
-**Comprehensive Data**: Complete sensor coverage for inverters and charge controllers  
-**Reliable Operation**: Automatic reconnection and intelligent error handling  
-**Professional UI**: Clean sensors with proper device classes and units  
-**Energy Dashboard**: Native integration with Home Assistant's energy tracking  
+• **Effortless Setup** - Add your device MAC address and start monitoring immediately  
+• **Comprehensive Data** - Complete sensor coverage for inverters and charge controllers  
+• **Reliable Operation** - Automatic reconnection and intelligent error handling  
+• **Professional UI** - Clean sensors with proper device classes and units  
+• **Energy Dashboard** - Native integration with Home Assistant's energy tracking  
 
 ---
 
 ## Quick Start
 
 ### HACS Installation (Recommended)
-1. Install HACS if not already installed
-2. Add this repository to HACS custom repositories  
-3. Search "BluPow" in HACS and install
-4. Restart Home Assistant
-5. Go to Settings → Devices & Services → Add Integration → BluPow
-6. Enter your device MAC address
+1. **Install HACS** if not already installed
+2. **Add Repository** - Add this repository to HACS custom repositories  
+3. **Search & Install** - Find "BluPow" in HACS and install
+4. **Restart** Home Assistant
+5. **Add Integration** - Go to Settings → Devices & Services → Add Integration → BluPow
+6. **Configure** - Enter your device MAC address
 
 ### Manual Installation
-1. Download this repository
-2. Copy the `blupow` folder to `config/custom_components/`
-3. Restart Home Assistant
-4. Add integration via Settings → Devices & Services
+1. **Download** this repository
+2. **Copy Files** - Copy the `blupow` folder to `config/custom_components/`
+3. **Restart** Home Assistant
+4. **Add Integration** - Go to Settings → Devices & Services
 
 ---
 
@@ -59,13 +59,13 @@ Monitor your solar power system with real-time data, automated dashboards, and s
 
 This integration works with Renogy devices that use Bluetooth modules:
 
-**Inverters**: RIV1230RCH-SPS and similar models  
-**Charge Controllers**: RNG-CTRL-RVR40, Rover, Wanderer series  
-**Requirements**: Device must have BT-1 or BT-2 Bluetooth module
+• **Inverters** - RIV1230RCH-SPS and similar models  
+• **Charge Controllers** - RNG-CTRL-RVR40, Rover, Wanderer series  
+• **Requirements** - Device must have BT-1 or BT-2 Bluetooth module
 
-**Sensor Coverage**:
-- **Inverters**: 17 sensors covering AC input/output, battery management, load monitoring
-- **Controllers**: 20 sensors covering solar production, MPPT charging, energy statistics
+**Sensor Coverage:**
+• **Inverters** - 17 sensors covering AC input/output, battery management, load monitoring
+• **Controllers** - 20 sensors covering solar production, MPPT charging, energy statistics
 
 Each device appears as a separate entity in Home Assistant with appropriate device classes for energy dashboard integration.
 
@@ -75,22 +75,22 @@ Each device appears as a separate entity in Home Assistant with appropriate devi
 
 ### Device Organization
 Each Renogy device appears as a distinct device in Home Assistant with:
-- Proper device identification and model information
-- Logical sensor grouping by function
-- Consistent entity naming (`sensor.blupow_[device_type]_[sensor]`)
+• **Proper Identification** - Device model and hardware information
+• **Logical Grouping** - Sensors organized by function
+• **Consistent Naming** - Clear entity naming (`sensor.blupow_[device_type]_[sensor]`)
 
 ### Energy Dashboard Integration
 Sensors automatically integrate with Home Assistant's energy dashboard:
-- **Solar Production**: Daily and total energy generation
-- **Battery Monitoring**: State of charge and power flow
-- **Load Tracking**: AC consumption and load management
+• **Solar Production** - Daily and total energy generation
+• **Battery Monitoring** - State of charge and power flow  
+• **Load Tracking** - AC consumption and load management
 
 ### Automation Ready
 All sensors include proper device classes enabling:
-- Energy monitoring automations
-- Battery level alerts
-- Load management based on solar production
-- Integration with other Home Assistant energy devices
+• **Energy Monitoring** - Automated energy tracking
+• **Battery Alerts** - Low battery notifications
+• **Load Management** - Solar production-based automation
+• **System Integration** - Works with other Home Assistant energy devices
 
 ---
 
@@ -121,10 +121,10 @@ The integration handles real-world solar system variations:
 
 ### Basic Setup
 No YAML configuration required. The integration automatically:
-- Detects device type and configures appropriate sensors
-- Sets proper device classes and units of measurement  
-- Establishes optimal update intervals
-- Handles connection management
+• **Device Detection** - Identifies device type and configures appropriate sensors
+• **Proper Classes** - Sets device classes and units of measurement  
+• **Optimal Timing** - Establishes efficient update intervals
+• **Connection Management** - Handles Bluetooth connectivity
 
 ### Optional Customization
 ```yaml
