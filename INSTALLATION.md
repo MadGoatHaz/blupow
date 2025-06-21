@@ -18,7 +18,7 @@ Complete step-by-step installation instructions for the BluPow Home Assistant in
 3. Click the **three dots (⋯)** in the top right
 4. Select **"Custom repositories"**
 5. **Add Repository**:
-   - **Repository**: `https://github.com/yourusername/blupow`
+   - **Repository**: `https://github.com/MadGoatHaz/blupow`
    - **Category**: `Integration`
 6. Click **"Add"**
 
@@ -33,7 +33,7 @@ Complete step-by-step installation instructions for the BluPow Home Assistant in
 2. Click **"+ Add Integration"** (bottom right)
 3. Search for **"BluPow"**
 4. **Enter your device information**:
-   - **MAC Address**: Your device MAC (e.g., `D8:B6:73:BF:4F:75`)
+   - **MAC Address**: Your device MAC (e.g., `XX:XX:XX:XX:XX:XX`)
    - **Device Name**: Descriptive name (e.g., "Solar Inverter")
 5. Click **"Submit"**
 
@@ -56,10 +56,10 @@ Complete step-by-step installation instructions for the BluPow Home Assistant in
 cd /config/custom_components
 
 # Download the integration
-git clone https://github.com/yourusername/blupow.git
+git clone https://github.com/MadGoatHaz/blupow.git
 
 # Or download and extract manually
-wget https://github.com/yourusername/blupow/archive/main.zip
+wget https://github.com/MadGoatHaz/blupow/archive/main.zip
 unzip main.zip
 mv blupow-main blupow
 ```
@@ -119,8 +119,8 @@ hcitool scan
 bluetoothctl scan on
 
 # Look for MAC addresses like:
-# D8:B6:73:BF:4F:75 - RIV1230RCH-SPS
-# C4:D3:6A:66:7E:D4 - RNG-CTRL-RVR40
+# XX:XX:XX:XX:XX:XX - RIV1230RCH-SPS  
+# YY:YY:YY:YY:YY:YY - RNG-CTRL-RVR40
 ```
 
 ---
@@ -160,14 +160,14 @@ When adding the integration, you can configure:
 - **Expected Sensors**: 17 sensors for AC monitoring, battery management
 - **Use Case**: Home backup power, AC load monitoring
 
-**Typical MAC**: `D8:B6:73:BF:4F:75`
+**Typical MAC**: `XX:XX:XX:XX:XX:XX`
 
 ### **☀️ Controller (RNG-CTRL-RVR40)**  
 - **MAC Pattern**: Usually starts with `C4:D3:6A:66:`
 - **Expected Sensors**: 20 sensors for solar production, MPPT charging
 - **Use Case**: Solar system monitoring, battery charging control
 
-**Typical MAC**: `C4:D3:6A:66:7E:D4`
+**Typical MAC**: `YY:YY:YY:YY:YY:YY`
 
 ---
 
@@ -251,4 +251,20 @@ BluPow sensors automatically integrate with Home Assistant's Energy Dashboard fo
 
 ---
 
-**🎯 Installation Complete! Your BluPow device is now fully integrated with Home Assistant!** ✨ 
+**🎯 Installation Complete! Your BluPow device is now fully integrated with Home Assistant!** ✨
+
+---
+
+## 📞 **Support & Contact**
+
+### **Developer**
+- **Garrett Hazlett** ([@MadGoatHaz](https://github.com/MadGoatHaz))
+- **Email**: ghazlett@gmail.com
+
+### **Support Development**
+- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - Monthly sponsorship
+- **[PayPal Donation](https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD)** - One-time donation
+
+### **Get Help**
+- **Issues**: [GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)
+- **Email**: ghazlett@gmail.com 

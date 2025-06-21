@@ -6,15 +6,18 @@
 [![License][license-shield]](LICENSE)
 
 ![Project Maintenance][maintenance-shield]
-[![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
+[![GitHub Sponsors][sponsors-shield]][sponsors]
+[![PayPal Donation][paypal-shield]][paypal]
 
 **The most comprehensive Home Assistant integration for Renogy BluPow devices! 🚀**
 
 Transform your solar power system into a smart, monitored powerhouse with real-time data, beautiful dashboards, and intelligent automation possibilities.
 
-![BluPow Integration](BluPow.png)
+<div align="center">
+<img src="BluPow.png" alt="BluPow Integration" width="300"/>
+</div>
 
-## ✨ **What Makes This Special?**
+## ✨ **What Makes BluPow Great?**
 
 🎯 **Plug & Play**: Just add your device MAC address and you're monitoring immediately  
 📊 **Rich Data**: 17+ sensors for inverters, 20+ for charge controllers  
@@ -45,7 +48,7 @@ Transform your solar power system into a smart, monitored powerhouse with real-t
 
 ## 📊 **Supported Devices & Sensors**
 
-### **🔌 RIV1230RCH-SPS Inverter** (`D8:B6:73:BF:4F:75`)
+### **🔌 RIV1230RCH-SPS Inverter** (`XX:XX:XX:XX:XX:XX`)
 Perfect for monitoring your AC power system, battery management, and load consumption.
 
 **17 Real-Time Sensors:**
@@ -69,7 +72,7 @@ Perfect for monitoring your AC power system, battery management, and load consum
 | ☀️ **Solar Input** | Solar panels (if connected) | 0 W |
 | 🌡️ **Temperature** | Inverter temperature | 35°C |
 
-### **☀️ RNG-CTRL-RVR40 Controller** (`C4:D3:6A:66:7E:D4`)
+### **☀️ RNG-CTRL-RVR40 Controller** (`YY:YY:YY:YY:YY:YY`)
 Ideal for monitoring solar production, MPPT charging, and DC load management.
 
 **20 Real-Time Sensors:**
@@ -88,8 +91,8 @@ Ideal for monitoring solar production, MPPT charging, and DC load management.
 
 ### **🏠 Device Cards**
 Each device appears as a separate, properly identified device:
-- **BluPow Inverter** (RIV1230RCH-SPS) - `D8:B6:73:BF:4F:75`
-- **BluPow Solar Controller** (RNG-CTRL-RVR40) - `C4:D3:6A:66:7E:D4`
+- **BluPow Inverter** (RIV1230RCH-SPS) - `XX:XX:XX:XX:XX:XX`
+- **BluPow Solar Controller** (RNG-CTRL-RVR40) - `YY:YY:YY:YY:YY:YY`
 
 ### **📊 Smart Entity Naming**
 ```
@@ -343,8 +346,8 @@ blupow/
 - **[Troubleshooting Guide](docs/troubleshooting/TROUBLESHOOTING.md)** - Common issues
 
 ### **🐛 Issues & Feature Requests**
-- **[GitHub Issues](https://github.com/yourusername/blupow/issues)** - Report bugs or request features
-- **[Discussions](https://github.com/yourusername/blupow/discussions)** - Community support
+- **[GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)** - Report bugs or request features
+- **[Discussions](https://github.com/MadGoatHaz/blupow/discussions)** - Community support
 
 ### **💬 Community**
 - **Home Assistant Community Forum** - [BluPow Integration Thread]
@@ -371,7 +374,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If this integration has saved you time and enhanced your solar monitoring experience, consider supporting development:
 
-[![Buy Me A Coffee][buymecoffeebadge]][buymecoffee]
+### **💖 Support Options**
+- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - Monthly sponsorship
+- **[PayPal Donation](https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD)** - One-time donation
+
+### **📧 Contact & Support**
+- **Developer**: Garrett Hazlett ([@MadGoatHaz](https://github.com/MadGoatHaz))
+- **Email**: ghazlett@gmail.com
+- **Support**: ghazlett@gmail.com
 
 ---
 
@@ -382,11 +392,13 @@ If this integration has saved you time and enhanced your solar monitoring experi
 ---
 
 <!-- Badges -->
-[releases-shield]: https://img.shields.io/github/release/yourusername/blupow.svg?style=for-the-badge
-[releases]: https://github.com/yourusername/blupow/releases
-[commits-shield]: https://img.shields.io/github/commit-activity/y/yourusername/blupow.svg?style=for-the-badge  
-[commits]: https://github.com/yourusername/blupow/commits/main
-[license-shield]: https://img.shields.io/github/license/yourusername/blupow.svg?style=for-the-badge
-[maintenance-shield]: https://img.shields.io/badge/maintainer-@yourusername-blue.svg?style=for-the-badge
-[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
-[buymecoffee]: https://www.buymeacoffee.com/yourusername 
+[releases-shield]: https://img.shields.io/github/release/MadGoatHaz/blupow.svg?style=for-the-badge
+[releases]: https://github.com/MadGoatHaz/blupow/releases
+[commits-shield]: https://img.shields.io/github/commit-activity/y/MadGoatHaz/blupow.svg?style=for-the-badge  
+[commits]: https://github.com/MadGoatHaz/blupow/commits/main
+[license-shield]: https://img.shields.io/github/license/MadGoatHaz/blupow.svg?style=for-the-badge
+[maintenance-shield]: https://img.shields.io/badge/maintainer-Garrett%20Hazlett%20%40MadGoatHaz-blue.svg?style=for-the-badge
+[sponsors-shield]: https://img.shields.io/badge/GitHub-Sponsors-ff69b4.svg?style=for-the-badge
+[sponsors]: https://github.com/sponsors/MadGoatHaz
+[paypal-shield]: https://img.shields.io/badge/PayPal-Donate-blue.svg?style=for-the-badge
+[paypal]: https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD 

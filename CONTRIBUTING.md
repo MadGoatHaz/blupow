@@ -9,7 +9,7 @@ Thank you for your interest in contributing to the BluPow Home Assistant integra
 ### **1. Development Setup**
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/blupow.git
+git clone https://github.com/MadGoatHaz/blupow.git
 cd blupow
 
 # Create development environment
@@ -529,7 +529,8 @@ Technical thoughts on implementation (optional).
 ### **Architecture Questions**  
 - **Read the docs**: Start with [Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)
 - **Code comments**: Inline documentation explains complex logic
-- **Ask maintainers**: Tag @yourusername in issues/PRs
+- **Ask maintainers**: Tag @MadGoatHaz in issues/PRs
+- **Email support**: ghazlett@gmail.com for complex technical questions
 
 ### **Community Support**
 - **Home Assistant Forum**: General Home Assistant integration questions
@@ -562,4 +563,22 @@ Your contributions make this project better for everyone. Whether you're:
 
 ...every contribution matters and is appreciated! 
 
-**Welcome to the BluPow community! 🎉** 
+**Welcome to the BluPow community! 🎉**
+
+---
+
+## 📞 **Contact & Support**
+
+### **Project Maintainer**
+- **Developer**: Garrett Hazlett ([@MadGoatHaz](https://github.com/MadGoatHaz))
+- **Email**: ghazlett@gmail.com
+- **GitHub**: [MadGoatHaz/blupow](https://github.com/MadGoatHaz/blupow)
+
+### **Support Development**  
+- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - Monthly sponsorship
+- **[PayPal Donation](https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD)** - One-time donation
+
+### **Get Help**
+- **Issues**: [GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)
+- **Email**: ghazlett@gmail.com 
