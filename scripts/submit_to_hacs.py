@@ -32,11 +32,11 @@ def check_requirements():
     else:
         print("❌ hacs.json missing")
     
-    if Path("manifest.json").exists():
+    if Path("custom_components/blupow/manifest.json").exists():
         requirements["Valid manifest.json"] = True
-        print("✅ manifest.json exists")
+        print("✅ manifest.json exists in custom_components/blupow/")
     else:
-        print("❌ manifest.json missing")
+        print("❌ manifest.json missing in custom_components/blupow/")
     
     if Path(".github/workflows/hacs.yaml").exists():
         requirements["HACS Action"] = True
