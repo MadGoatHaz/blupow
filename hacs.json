@@ -2,17 +2,8 @@
     "name": "BluPow - Renogy Device Integration",
     "content_in_root": false,
     "country": ["US", "CA", "GB", "AU", "DE", "FR"],
-    "domains": ["sensor"],
     "homeassistant": "2024.1.0",
     "hacs": "1.32.0",
     "iot_class": "Local Polling",
-    "render_readme": true,
-    "persistent_directory": "data",
-    "documentation": "https://github.com/yourusername/blupow",
-    "issue_tracker": "https://github.com/yourusername/blupow/issues",
-    "codeowners": ["@yourusername"],
-    "zip_release": false,
-    "filename": "blupow.zip",
-    "hide_default_branch": false,
-    "category": "integration"
+    "render_readme": true
 } 
