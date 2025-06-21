@@ -1,0 +1,66 @@
+{
+  "timestamp": "2025-06-21T07:21:55.333345",
+  "system_status": "needs_attention",
+  "current_analysis": {
+    "timestamp": "2025-06-21T07:21:55.332982",
+    "configured_device": "D8:B6:73:BF:4F:75",
+    "core_files_present": {
+      "coordinator.py": {
+        "exists": true,
+        "size": 13751,
+        "modified": "2025-06-21T07:19:15.169280"
+      },
+      "blupow_client.py": {
+        "exists": true,
+        "size": 5266,
+        "modified": "2025-06-21T07:19:15.169650"
+      },
+      "sensor.py": {
+        "exists": true,
+        "size": 6947,
+        "modified": "2025-06-20T15:46:32.271882"
+      },
+      "__init__.py": {
+        "exists": true,
+        "size": 3295,
+        "modified": "2025-06-20T14:13:55.641321"
+      },
+      "manifest.json": {
+        "exists": true,
+        "size": 672,
+        "modified": "2025-06-20T15:15:53.960765"
+      }
+    },
+    "manifest_info": {
+      "domain": "blupow",
+      "name": "BluPow - Renogy Inverter Integration",
+      "version": "2.0.0",
+      "requirements": [
+        "bleak>=0.21.0"
+      ]
+    },
+    "coordinator_type": "traditional",
+    "issues_found": [
+      "Using traditional coordinator - may have stability issues",
+      "Configured device D8:B6:73:BF:4F:75 not found in discovery"
+    ],
+    "recommendations": [
+      "Upgrade to subprocess-based coordinator",
+      "Device may be offline or out of range"
+    ]
+  },
+  "production_registry_loaded": true,
+  "recommended_actions": [
+    "CRITICAL: Switch to a working device",
+    "Upgrade to subprocess-based coordinator for stability"
+  ],
+  "device_recommendations": [
+    {
+      "mac_address": "C4:D3:6A:66:7E:D4",
+      "name": "BT-TH-6A667ED4    ",
+      "health_score": 100.0,
+      "reason": "Confirmed Renogy power monitoring device",
+      "action": "Reconfigure Home Assistant to use C4:D3:6A:66:7E:D4"
+    }
+  ]
+}

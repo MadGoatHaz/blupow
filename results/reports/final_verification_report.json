@@ -1,0 +1,51 @@
+{
+  "timestamp": "2025-06-21T08:02:15.719521",
+  "test_type": "Final Verification Test",
+  "goal": "ZERO unavailable sensors",
+  "expected_working_sensors": 22,
+  "previously_unavailable_sensors": 11,
+  "target_outcome": "All sensors show real data or are properly removed",
+  "working_sensors": {
+    "AC Apparent Power": "510 VA",
+    "AC Input Current": "8.20 A",
+    "AC Input Frequency": "60.00 Hz",
+    "AC Input Voltage": "120.5 V",
+    "AC Load Power": "492 W",
+    "AC Output Current": "4.10 A",
+    "AC Output Frequency": "60.00 Hz",
+    "AC Output Voltage": "120.2 V",
+    "Battery Charging Current": "5.20 A",
+    "Battery SOC": "85%",
+    "Battery Voltage": "12.80 V",
+    "Charging Power": "66 W",
+    "Charging Status": "constant_voltage",
+    "Device ID": "BTRIC134000035",
+    "Inverter Model": "RIV1230RCH-SPS",
+    "Inverter Temperature": "77.5 \u00b0F",
+    "Line Charging Current": "0.00 A",
+    "Load Current": "4.10 A",
+    "Load Percentage": "35%",
+    "Solar Input Current": "3.60 A",
+    "Solar Input Power": "66 W",
+    "Solar Input Voltage": "18.4 V"
+  },
+  "removed_sensors": [
+    "Battery Current",
+    "Battery Temperature",
+    "Charging Amp Hours Today",
+    "Controller Temperature",
+    "Daily Power Consumption",
+    "Daily Power Generation",
+    "Discharging Amp Hours Today",
+    "Load Power",
+    "Load Voltage",
+    "Model Number",
+    "Total Power Generation"
+  ],
+  "cleanup_actions": [
+    "Removed 15 problematic entities from entity registry",
+    "Cleaned up legacy sensors causing conflicts",
+    "Organized project structure",
+    "Created comprehensive documentation"
+  ]
+}

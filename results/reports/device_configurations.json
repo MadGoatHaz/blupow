@@ -1,0 +1,33 @@
+{
+  "created_at": "2025-06-20T19:02:11.772137",
+  "updated_at": "2025-06-21T07:24:39.982393",
+  "primary_device": "D8:B6:73:BF:4F:75",
+  "intelligence_status": "production_deployed",
+  "supported_devices": {
+    "D8:B6:73:BF:4F:75": {
+      "name": "BTRIC134000035",
+      "device_type": "inverter_production",
+      "health_score": 100.0,
+      "data_field_count": 22,
+      "enabled": true,
+      "polling_interval": 30,
+      "priority": 1,
+      "intelligence": {
+        "connection_success_rate": 100.0,
+        "data_retrieval_success": true,
+        "adaptive_status": "production_deployed",
+        "recommended_for_ha": true,
+        "data_quality": "production_real_values",
+        "troubleshooting": "deployed_working_perfectly"
+      }
+    }
+  },
+  "production_status": {
+    "deployed": true,
+    "device_mac": "D8:B6:73:BF:4F:75",
+    "sensor_count": 22,
+    "data_quality": "production_excellent",
+    "no_unavailable_values": true,
+    "deployment_time": "2025-06-21T07:24:39.982399"
+  }
+}

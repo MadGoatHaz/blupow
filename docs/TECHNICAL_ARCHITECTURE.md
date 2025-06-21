@@ -1,781 +1,442 @@
-# AiCockpit Technical Architecture
-## Revolutionary AI-Collaborative Development Platform
+# BluPow Multi-Device Technical Architecture
 
-This document provides detailed technical specifications for AiCockpit's revolutionary architecture, centered around high-performance vLLM backend and deep VS Code integration.
+## System Overview
 
----
+BluPow is a Home Assistant integration designed to manage multiple Renogy device types simultaneously, each with distinct communication protocols, data structures, and operational characteristics. The architecture is built around device type identification and capability-based data handling.
 
-## 🏗️ **System Architecture Overview**
+## Architecture Principles
 
-### **Core Philosophy**
-AiCockpit's architecture embodies the revolutionary concept of **VS Code as the AI's "IDE Hand"** - a physical manifestation of AI collaboration that enables true human-AI partnership in software development.
+### 1. Device Type Segregation
+- **Strict Type Isolation**: Each device type (Inverter, Controller, Battery) has completely separate data structures
+- **Capability-Based Access**: Devices only expose sensors they actually support
+- **No Cross-Contamination**: Inverter data never mixes with controller data
 
-### **High-Level Architecture**
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    AiCockpit Ecosystem                     │
-├─────────────────────────────────────────────────────────────┤
-│  VS Code Extension (The AI's Physical Interface)           │
-│  ├── Inline Completions    ├── Chat Interface             │
-│  ├── Code Editing          ├── Terminal Integration       │
-│  └── Context Gathering     └── Documentation Access       │
-├─────────────────────────────────────────────────────────────┤
-│  Communication Layer (OpenAI-Compatible API)               │
-│  ├── HTTP/WebSocket        ├── Streaming Responses        │
-│  ├── Authentication        └── Load Balancing             │
-├─────────────────────────────────────────────────────────────┤
-│  vLLM High-Performance Backend                             │
-│  ├── PagedAttention        ├── Continuous Batching        │
-│  ├── Multi-GPU Support     ├── Model Management           │
-│  └── Memory Optimization   └── Performance Monitoring     │
-├─────────────────────────────────────────────────────────────┤
-│  Model Ecosystem                                           │
-│  ├── Code Generation       ├── Chat Models                │
-│  ├── Specialized Tools     └── Custom Fine-tuned Models   │
-├─────────────────────────────────────────────────────────────┤
-│  Infrastructure & Scaling                                  │
-│  ├── Kubernetes/Docker     ├── Google Cloud Integration   │
-│  ├── Monitoring/Logging    └── Auto-scaling               │
-└─────────────────────────────────────────────────────────────┘
-```
+### 2. MAC Address-Based Identification
+- **Primary Key**: MAC address serves as the unique device identifier
+- **Type Mapping**: MAC addresses map to specific device types and models
+- **Immutable Association**: Device type association never changes once established
 
----
+### 3. Protocol Compliance
+- **Renogy BT Standards**: Follows [Renogy BT Library](https://github.com/cyrils/renogy-bt) specifications
+- **Device ID Mapping**: Uses standard Renogy device ID conventions
+- **Communication Patterns**: Respects device-specific communication requirements
 
-## ⚡ **vLLM High-Performance Backend**
+## Device Type Architecture
 
-### **Core Innovation: Why vLLM Changes Everything**
+### INVERTER DEVICES (Type: RIV1230RCH-SPS)
 
-#### **Performance Revolution**
-- **24x Performance Improvement** over traditional HuggingFace Transformers
-- **<100ms Latency** for real-time inline completions
-- **>1000 requests/second** throughput on multi-GPU setups
-- **>95% GPU memory utilization** through advanced memory management
-
-#### **PagedAttention Algorithm**
-Revolutionary memory management inspired by operating system virtual memory:
-
+#### Device Characteristics
 ```python
-# Traditional Approach (Wasteful)
-class TraditionalKVCache:
-    def __init__(self, max_seq_len, batch_size):
-        # Pre-allocate large contiguous blocks
-        self.cache = torch.zeros(batch_size, max_seq_len, hidden_size)
-        # 60-80% memory waste due to fragmentation
-        
-# vLLM PagedAttention (Efficient)
-class PagedAttention:
-    def __init__(self, block_size=16):
-        # Dynamic allocation of small blocks
-        self.blocks = {}  # Physical memory blocks
-        self.block_tables = {}  # Logical to physical mapping
-        # <4% memory waste, near-optimal utilization
-```
-
-**Benefits:**
-- **Eliminates Internal Fragmentation**: No unused memory in allocated blocks
-- **Eliminates External Fragmentation**: Non-contiguous memory allocation
-- **Dynamic Allocation**: Memory allocated on-demand as sequences grow
-- **Efficient Sharing**: Multiple sequences can share identical prefixes
-
-#### **Continuous Batching**
-Iteration-level scheduling that maximizes GPU utilization:
-
-```python
-# Traditional Static Batching (Inefficient)
-def static_batching(requests):
-    batch = create_batch(requests)
-    while not all_complete(batch):
-        process_step(batch)  # Blocked by slowest sequence
-    return results
-
-# vLLM Continuous Batching (Efficient)
-def continuous_batching(request_queue):
-    active_batch = []
-    while request_queue or active_batch:
-        # Add new requests as memory becomes available
-        while can_add_request() and request_queue:
-            active_batch.append(request_queue.pop())
-        
-        # Process one step for all active sequences
-        process_step(active_batch)
-        
-        # Remove completed sequences, freeing memory
-        active_batch = [req for req in active_batch if not req.complete]
-```
-
-### **Multi-GPU Architecture**
-
-#### **Tensor Parallelism (TP)**
-Distributes individual layers across multiple GPUs:
-
-```python
-# Configuration for 4-GPU setup
-vllm_config = {
-    "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    "tensor_parallel_size": 4,  # Split across 4 GPUs
-    "gpu_memory_utilization": 0.95,
-    "max_num_batched_tokens": 8192,
-    "max_num_seqs": 256
-}
-
-# Command line deployment
-vllm serve meta-llama/Meta-Llama-3.1-8B-Instruct \
-    --tensor-parallel-size 4 \
-    --gpu-memory-utilization 0.95 \
-    --host 0.0.0.0 \
-    --port 8000
-```
-
-#### **Pipeline Parallelism (PP)**
-Distributes layers across multiple nodes:
-
-```python
-# Multi-node configuration
-vllm_config = {
-    "model": "meta-llama/Meta-Llama-3.1-70B-Instruct",
-    "pipeline_parallel_size": 4,  # 4 nodes
-    "tensor_parallel_size": 2,    # 2 GPUs per node
-    "distributed_executor_backend": "ray"
+INVERTER_SPEC = {
+    "device_type": "INVERTER",
+    "model": "RIV1230RCH-SPS",
+    "device_id": 32,  # Standard Renogy inverter ID
+    "mac_pattern": "D8:B6:73:BF:4F:75",  # Known working device
+    "primary_function": "AC_POWER_CONVERSION",
+    "capabilities": [
+        "AC_INPUT_MONITORING",
+        "AC_OUTPUT_MONITORING", 
+        "BATTERY_MANAGEMENT",
+        "LOAD_MONITORING",
+        "TEMPERATURE_MONITORING"
+    ],
+    "excluded_capabilities": [
+        "SOLAR_MPPT",
+        "GENERATION_STATISTICS",
+        "DETAILED_SOLAR_MONITORING"
+    ]
 }
 ```
 
-#### **Hybrid Parallelism**
-Optimal configuration for enterprise deployments:
-
-```
-Node 1 (TP=4): [GPU0, GPU1, GPU2, GPU3] - Layers 0-15
-Node 2 (TP=4): [GPU4, GPU5, GPU6, GPU7] - Layers 16-31
-Node 3 (TP=4): [GPU8, GPU9, GPU10, GPU11] - Layers 32-47
-Node 4 (TP=4): [GPU12, GPU13, GPU14, GPU15] - Layers 48-63
-```
-
-### **Model Management System**
-
-#### **Hugging Face Integration**
-Seamless model loading and management:
-
+#### Data Structure Contract
 ```python
-class ModelManager:
-    def __init__(self):
-        self.models = {}
-        self.model_configs = {}
+INVERTER_DATA_CONTRACT = {
+    # AC Input Monitoring (Primary Function)
+    "input_voltage": {"type": "float", "unit": "V", "range": [100, 140]},
+    "input_current": {"type": "float", "unit": "A", "range": [0, 20]},
+    "input_frequency": {"type": "float", "unit": "Hz", "range": [59, 61]},
     
-    async def load_model(self, model_id: str, config: dict):
-        """Load model from Hugging Face Hub or local path"""
-        if model_id not in self.models:
-            # Check local cache first
-            if self._is_cached(model_id):
-                model_path = self._get_cache_path(model_id)
-            else:
-                # Download from Hugging Face Hub
-                model_path = await self._download_model(model_id)
-            
-            # Initialize vLLM engine
-            engine = LLM(
-                model=model_path,
-                **config
-            )
-            self.models[model_id] = engine
-            self.model_configs[model_id] = config
-        
-        return self.models[model_id]
+    # AC Output Monitoring (Primary Function)
+    "output_voltage": {"type": "float", "unit": "V", "range": [100, 140]},
+    "output_current": {"type": "float", "unit": "A", "range": [0, 15]},
+    "output_frequency": {"type": "float", "unit": "Hz", "range": [59, 61]},
     
-    def _handle_gated_models(self, model_id: str):
-        """Handle gated models (Llama, Gemma, etc.)"""
-        if self._is_gated_model(model_id):
-            token = os.getenv("HF_TOKEN")
-            if not token:
-                raise ValueError("HF_TOKEN required for gated models")
-            return {"use_auth_token": token}
-        return {}
+    # Load Monitoring
+    "load_active_power": {"type": "int", "unit": "W", "range": [0, 1500]},
+    "load_apparent_power": {"type": "int", "unit": "VA", "range": [0, 1500]},
+    "load_current": {"type": "float", "unit": "A", "range": [0, 15]},
+    "load_percentage": {"type": "int", "unit": "%", "range": [0, 100]},
+    
+    # Battery Management
+    "battery_voltage": {"type": "float", "unit": "V", "range": [10, 16]},
+    "battery_percentage": {"type": "int", "unit": "%", "range": [0, 100]},
+    "charging_current": {"type": "float", "unit": "A", "range": [0, 10]},
+    "charging_status": {"type": "str", "values": ["deactivated", "constant_voltage", "bulk_charge"]},
+    "charging_power": {"type": "int", "unit": "W", "range": [0, 200]},
+    "line_charging_current": {"type": "float", "unit": "A", "range": [0, 10]},
+    
+    # Solar Pass-through (Minimal)
+    "solar_voltage": {"type": "float", "unit": "V", "range": [0, 50], "note": "Pass-through only"},
+    "solar_current": {"type": "float", "unit": "A", "range": [0, 10], "note": "Pass-through only"},
+    "solar_power": {"type": "int", "unit": "W", "range": [0, 200], "note": "Pass-through only"},
+    
+    # System Monitoring
+    "temperature": {"type": "float", "unit": "°F", "range": [32, 140]},
+    "model": {"type": "str", "value": "RIV1230RCH-SPS"},
+    "device_id": {"type": "int", "value": 32}
+}
 ```
 
-#### **Quantization Support**
-Efficient model compression for resource optimization:
+### CHARGE CONTROLLER DEVICES (Type: RNG-CTRL-RVR40)
 
+#### Device Characteristics
 ```python
-# GPTQ Quantization (4-bit)
-quantized_config = {
-    "model": "TheBloke/Llama-2-7B-Chat-GPTQ",
-    "quantization": "gptq",
-    "tensor_parallel_size": 2,
-    "gpu_memory_utilization": 0.9
-}
-
-# AWQ Quantization (4-bit, faster)
-awq_config = {
-    "model": "TheBloke/Llama-2-7B-Chat-AWQ",
-    "quantization": "awq",
-    "tensor_parallel_size": 2,
-    "gpu_memory_utilization": 0.9
-}
-
-# FP8 Quantization (8-bit, highest quality)
-fp8_config = {
-    "model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-    "quantization": "fp8",
-    "tensor_parallel_size": 4,
-    "gpu_memory_utilization": 0.95
+CONTROLLER_SPEC = {
+    "device_type": "CHARGE_CONTROLLER",
+    "model": "RNG-CTRL-RVR40", 
+    "device_id": 96,  # Standard Renogy controller ID
+    "mac_pattern": "C4:D3:6A:66:7E:D4",  # New controller device
+    "primary_function": "SOLAR_MPPT_CHARGING",
+    "capabilities": [
+        "SOLAR_MPPT",
+        "BATTERY_CHARGING",
+        "GENERATION_STATISTICS",
+        "DC_LOAD_MONITORING",
+        "TEMPERATURE_MONITORING"
+    ],
+    "excluded_capabilities": [
+        "AC_INPUT_MONITORING",
+        "AC_OUTPUT_MONITORING",
+        "AC_LOAD_MONITORING"
+    ]
 }
 ```
 
----
-
-## 🎯 **VS Code Extension Architecture**
-
-### **The "IDE Hand" Concept**
-The VS Code extension serves as the AI's physical interface, enabling direct manipulation of code and seamless collaboration.
-
-### **Extension Architecture**
-```
-vscode-extension/
-├── src/
-│   ├── extension.ts              # Main extension entry point
-│   ├── api/                      # Backend communication
-│   │   ├── client.ts             # HTTP client for vLLM backend
-│   │   ├── streaming.ts          # Streaming response handling
-│   │   └── auth.ts               # Authentication management
-│   ├── features/                 # Core AI features
-│   │   ├── inline_completions.ts # Ghost text completions
-│   │   ├── code_editing.ts       # Ctrl+K style editing
-│   │   ├── chat_interface.ts     # AI chat functionality
-│   │   ├── terminal_integration.ts # Terminal command execution
-│   │   └── documentation.ts      # Doc integration
-│   ├── context/                  # Context gathering
-│   │   ├── code_analyzer.ts      # Code context analysis
-│   │   ├── project_scanner.ts    # Project-wide context
-│   │   └── file_watcher.ts       # Real-time file monitoring
-│   └── ui/                       # User interface components
-│       ├── chat_panel.ts         # Chat webview panel
-│       ├── settings_panel.ts     # Configuration UI
-│       └── status_bar.ts         # Status bar integration
-```
-
-### **Core Features Implementation**
-
-#### **1. Inline Completions System**
-Real-time ghost text suggestions with <100ms latency:
-
-```typescript
-class AiCockpitInlineCompletionProvider implements vscode.InlineCompletionItemProvider {
-    async provideInlineCompletionItems(
-        document: vscode.TextDocument,
-        position: vscode.Position,
-        context: vscode.InlineCompletionContext
-    ): Promise<vscode.InlineCompletionItem[]> {
-        
-        // Gather context
-        const codeContext = await this.gatherContext(document, position);
-        
-        // Construct completion prompt
-        const prompt = this.buildCompletionPrompt(codeContext);
-        
-        // Stream completion from vLLM backend
-        const completion = await this.streamCompletion(prompt);
-        
-        return [new vscode.InlineCompletionItem(completion)];
-    }
+#### Data Structure Contract
+```python
+CONTROLLER_DATA_CONTRACT = {
+    # Solar MPPT (Primary Function)
+    "pv_voltage": {"type": "float", "unit": "V", "range": [0, 100]},
+    "pv_current": {"type": "float", "unit": "A", "range": [0, 40]},
+    "pv_power": {"type": "int", "unit": "W", "range": [0, 1000]},
     
-    private async gatherContext(document: vscode.TextDocument, position: vscode.Position) {
+    # Battery Charging (Primary Function)
+    "battery_voltage": {"type": "float", "unit": "V", "range": [10, 16]},
+    "battery_percentage": {"type": "int", "unit": "%", "range": [0, 100]},
+    "charging_current": {"type": "float", "unit": "A", "range": [0, 40]},
+    "charging_status": {"type": "str", "values": ["bulk_charge", "absorption", "float", "equalization"]},
+    "charging_power": {"type": "int", "unit": "W", "range": [0, 1000]},
+    
+    # Generation Statistics (Unique to Controllers)
+    "daily_power_generation": {"type": "float", "unit": "kWh", "range": [0, 50]},
+    "total_power_generation": {"type": "float", "unit": "kWh", "range": [0, 100000]},
+    "max_power_today": {"type": "int", "unit": "W", "range": [0, 1000]},
+    "daily_charge_ah": {"type": "int", "unit": "Ah", "range": [0, 200]},
+    "charging_amp_hours_today": {"type": "int", "unit": "Ah", "range": [0, 200]},
+    
+    # DC Load Monitoring (if connected)
+    "load_current": {"type": "float", "unit": "A", "range": [0, 20]},
+    "load_percentage": {"type": "int", "unit": "%", "range": [0, 100]},
+    
+    # System Monitoring
+    "controller_temperature": {"type": "float", "unit": "°F", "range": [32, 140]},
+    "model": {"type": "str", "value": "RNG-CTRL-RVR40"},
+    "device_id": {"type": "int", "value": 96},
+    
+    # Explicitly Excluded AC Fields
+    "input_voltage": {"type": "int", "value": 0, "note": "Not available on controllers"},
+    "input_current": {"type": "int", "value": 0, "note": "Not available on controllers"},
+    "output_voltage": {"type": "int", "value": 0, "note": "Not available on controllers"},
+    "output_current": {"type": "int", "value": 0, "note": "Not available on controllers"}
+}
+```
+
+## Communication Architecture
+
+### Device Communication Patterns
+
+#### Inverter Communication (D8:B6:73:BF:4F:75)
+```python
+class InverterCommunication:
+    """
+    Inverter-specific communication handling
+    Based on Renogy BT library inverter protocols
+    """
+    
+    DEVICE_ID = 32
+    UPDATE_INTERVAL = 30  # seconds
+    RETRY_ATTEMPTS = 3
+    
+    @staticmethod
+    def get_data_structure():
+        """Returns inverter-specific data structure"""
         return {
-            beforeCursor: document.getText(new vscode.Range(0, 0, position.line, position.character)),
-            afterCursor: document.getText(new vscode.Range(position, document.lineCount, 0)),
-            language: document.languageId,
-            fileName: document.fileName,
-            projectContext: await this.getProjectContext()
-        };
-    }
-}
-```
-
-#### **2. Command-Based Code Editing (Ctrl+K)**
-Natural language code transformation:
-
-```typescript
-class CodeEditingFeature {
-    async editSelection(instruction: string) {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) return;
-        
-        const selection = editor.selection;
-        const selectedText = editor.document.getText(selection);
-        
-        // Construct edit prompt
-        const prompt = this.buildEditPrompt(selectedText, instruction, {
-            language: editor.document.languageId,
-            context: await this.gatherSurroundingContext(editor, selection)
-        });
-        
-        // Stream edit from backend
-        const editedCode = await this.streamEdit(prompt);
-        
-        // Apply edit to document
-        await editor.edit(editBuilder => {
-            editBuilder.replace(selection, editedCode);
-        });
-    }
-    
-    private buildEditPrompt(code: string, instruction: string, context: any): string {
-        return `
-You are an expert ${context.language} developer. Edit the following code according to the instruction.
-
-Context:
-${context.context}
-
-Current code:
-\`\`\`${context.language}
-${code}
-\`\`\`
-
-Instruction: ${instruction}
-
-Return only the edited code without explanation:
-\`\`\`${context.language}
-`;
-    }
-}
-```
-
-#### **3. Intelligent Chat Interface**
-Conversation with codebase using @-mentions:
-
-```typescript
-class ChatInterface {
-    async handleChatMessage(message: string) {
-        // Parse @-mentions for file references
-        const mentions = this.parseFileMentions(message);
-        
-        // Gather context from mentioned files
-        const fileContents = await Promise.all(
-            mentions.map(file => this.getFileContent(file))
-        );
-        
-        // Construct chat prompt with context
-        const prompt = this.buildChatPrompt(message, fileContents);
-        
-        // Stream response from backend
-        const response = await this.streamChatResponse(prompt);
-        
-        // Display in chat panel
-        this.displayChatResponse(response);
-    }
-    
-    private parseFileMentions(message: string): string[] {
-        const mentionRegex = /@([^\s]+)/g;
-        const matches = message.match(mentionRegex);
-        return matches ? matches.map(m => m.substring(1)) : [];
-    }
-}
-```
-
-#### **4. Terminal Integration**
-AI executes commands through natural language:
-
-```typescript
-class TerminalIntegration {
-    async executeNaturalLanguageCommand(description: string) {
-        // Convert natural language to shell command
-        const command = await this.generateCommand(description);
-        
-        // Show command to user for confirmation
-        const confirmed = await vscode.window.showInformationMessage(
-            `Execute: ${command}?`,
-            'Yes', 'No'
-        );
-        
-        if (confirmed === 'Yes') {
-            // Execute in integrated terminal
-            const terminal = vscode.window.createTerminal('AiCockpit');
-            terminal.sendText(command);
-            terminal.show();
+            # AC-focused data structure
+            'model': 'RIV1230RCH-SPS',
+            'device_id': 32,
+            'input_voltage': 124.9,
+            'input_current': 2.2,
+            'output_voltage': 124.9,
+            'output_current': 1.19,
+            'load_active_power': 108,
+            'load_apparent_power': 150,
+            'battery_voltage': 14.4,
+            'battery_percentage': 100,
+            'charging_current': 0.7,
+            'temperature': 30.0
+            # Solar fields minimal/pass-through only
         }
-    }
-    
-    private async generateCommand(description: string): Promise<string> {
-        const prompt = `
-Convert this natural language description to a shell command:
-"${description}"
-
-Return only the command without explanation:
-`;
-        return await this.streamCompletion(prompt);
-    }
-}
 ```
 
----
-
-## 🔗 **Communication Layer**
-
-### **OpenAI-Compatible API**
-Seamless integration with existing tools and workflows:
-
+#### Controller Communication (C4:D3:6A:66:7E:D4)
 ```python
-# FastAPI server with OpenAI compatibility
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from vllm import LLM, SamplingParams
-import asyncio
-
-app = FastAPI()
-llm_engine = LLM(model="meta-llama/Meta-Llama-3.1-8B-Instruct")
-
-class ChatCompletionRequest(BaseModel):
-    model: str
-    messages: list
-    temperature: float = 0.7
-    max_tokens: int = 256
-    stream: bool = False
-
-@app.post("/v1/chat/completions")
-async def chat_completions(request: ChatCompletionRequest):
-    # Convert messages to prompt
-    prompt = convert_messages_to_prompt(request.messages)
+class ControllerCommunication:
+    """
+    Charge controller-specific communication handling
+    Based on Renogy BT library controller protocols
+    """
     
-    # Configure sampling parameters
-    sampling_params = SamplingParams(
-        temperature=request.temperature,
-        max_tokens=request.max_tokens
-    )
+    DEVICE_ID = 96
+    UPDATE_INTERVAL = 15  # seconds (more frequent for solar data)
+    RETRY_ATTEMPTS = 3
     
-    if request.stream:
-        return StreamingResponse(
-            stream_completion(prompt, sampling_params),
-            media_type="text/plain"
-        )
-    else:
-        # Synchronous completion
-        outputs = llm_engine.generate([prompt], sampling_params)
+    @staticmethod
+    def get_data_structure():
+        """Returns controller-specific data structure"""
         return {
-            "choices": [{
-                "message": {
-                    "role": "assistant",
-                    "content": outputs[0].outputs[0].text
-                }
-            }]
+            # Solar-focused data structure
+            'model': 'RNG-CTRL-RVR40',
+            'device_id': 96,
+            'pv_voltage': 21.8,
+            'pv_current': 5.1,
+            'pv_power': 112,
+            'battery_voltage': 13.2,
+            'battery_percentage': 85,
+            'charging_current': 8.5,
+            'charging_status': 'bulk_charge',
+            'daily_power_generation': 2.8,
+            'total_power_generation': 1247.5,
+            'controller_temperature': 25,
+            # AC fields explicitly set to 0
+            'input_voltage': 0,
+            'output_voltage': 0
         }
 ```
 
-### **Streaming Implementation**
-Real-time response streaming for immediate feedback:
+### Multi-Device Coordination
 
-```typescript
-class StreamingClient {
-    async streamCompletion(prompt: string): Promise<string> {
-        const response = await fetch('/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiKey}`
-            },
-            body: JSON.stringify({
-                model: 'meta-llama/Meta-Llama-3.1-8B-Instruct',
-                messages: [{ role: 'user', content: prompt }],
-                stream: true,
-                temperature: 0.2,
-                max_tokens: 500
-            })
-        });
-        
-        const reader = response.body?.getReader();
-        let result = '';
-        
-        while (true) {
-            const { done, value } = await reader!.read();
-            if (done) break;
-            
-            const chunk = new TextDecoder().decode(value);
-            const lines = chunk.split('\n').filter(line => line.trim());
-            
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const data = line.substring(6);
-                    if (data === '[DONE]') return result;
-                    
-                    try {
-                        const parsed = JSON.parse(data);
-                        const delta = parsed.choices[0]?.delta?.content;
-                        if (delta) {
-                            result += delta;
-                            this.onToken(delta); // Real-time updates
-                        }
-                    } catch (e) {
-                        console.error('Parse error:', e);
-                    }
-                }
-            }
+#### Device Manager Architecture
+```python
+class MultiDeviceManager:
+    """
+    Coordinates multiple devices with different types and protocols
+    """
+    
+    DEVICE_REGISTRY = {
+        "D8:B6:73:BF:4F:75": {
+            "type": "INVERTER",
+            "handler": InverterCommunication,
+            "priority": "HIGH",  # Critical for power monitoring
+            "update_interval": 30
+        },
+        "C4:D3:6A:66:7E:D4": {
+            "type": "CONTROLLER", 
+            "handler": ControllerCommunication,
+            "priority": "MEDIUM",  # Important for solar monitoring
+            "update_interval": 15
         }
-        
-        return result;
+    }
+    
+    def coordinate_updates(self):
+        """
+        Staggered updates to prevent BLE interference
+        """
+        # Update high-priority devices first
+        # Stagger updates by 5-10 seconds
+        # Handle failures gracefully per device
+```
+
+## Home Assistant Integration Architecture
+
+### Entity Creation Strategy
+
+#### Device-Specific Entity Mapping
+```python
+ENTITY_MAPPING = {
+    "INVERTER": {
+        "sensors": [
+            {"key": "input_voltage", "name": "AC Input Voltage", "device_class": "voltage"},
+            {"key": "output_voltage", "name": "AC Output Voltage", "device_class": "voltage"},
+            {"key": "load_active_power", "name": "AC Load Power", "device_class": "power"},
+            {"key": "battery_voltage", "name": "Battery Voltage", "device_class": "voltage"},
+            {"key": "battery_percentage", "name": "Battery SOC", "device_class": "battery"},
+            {"key": "temperature", "name": "Inverter Temperature", "device_class": "temperature"}
+        ],
+        "device_info": {
+            "name": "BluPow RIV1230RCH-SPS Inverter",
+            "model": "RIV1230RCH-SPS",
+            "manufacturer": "Renogy"
+        }
+    },
+    "CONTROLLER": {
+        "sensors": [
+            {"key": "pv_voltage", "name": "Solar Voltage", "device_class": "voltage"},
+            {"key": "pv_current", "name": "Solar Current", "device_class": "current"},
+            {"key": "pv_power", "name": "Solar Power", "device_class": "power"},
+            {"key": "battery_voltage", "name": "Battery Voltage", "device_class": "voltage"},
+            {"key": "battery_percentage", "name": "Battery SOC", "device_class": "battery"},
+            {"key": "daily_power_generation", "name": "Daily Generation", "device_class": "energy"},
+            {"key": "controller_temperature", "name": "Controller Temperature", "device_class": "temperature"}
+        ],
+        "device_info": {
+            "name": "BluPow RNG-CTRL-RVR40 Controller", 
+            "model": "RNG-CTRL-RVR40",
+            "manufacturer": "Renogy"
+        }
     }
 }
 ```
 
----
+### Device Registry Integration
+```python
+class DeviceRegistryManager:
+    """
+    Manages Home Assistant device registry for multiple devices
+    """
+    
+    def register_device(self, mac_address: str, device_type: str):
+        """
+        Register device with HA device registry
+        """
+        device_config = DEVICE_REGISTRY[mac_address]
+        
+        device_info = {
+            "identifiers": {(DOMAIN, mac_address)},
+            "name": device_config["name"],
+            "model": device_config["model"],
+            "manufacturer": "Renogy",
+            "sw_version": "BluPow Multi-Device",
+            "hw_version": device_type,
+            "connections": {("mac", mac_address)}
+        }
+        
+        return device_info
+```
 
-## 🚀 **Performance Optimization**
+## Data Flow Architecture
 
-### **Memory Management**
-Advanced memory optimization for maximum efficiency:
+### Multi-Device Data Pipeline
+
+```mermaid
+graph TD
+    A[Device Discovery] --> B{Device Type?}
+    B -->|D8:B6:73:BF:4F:75| C[Inverter Handler]
+    B -->|C4:D3:6A:66:7E:D4| D[Controller Handler]
+    B -->|Unknown| E[Generic Handler]
+    
+    C --> F[Inverter Data Structure]
+    D --> G[Controller Data Structure]
+    E --> H[Unknown Device Structure]
+    
+    F --> I[Multi-Device Coordinator]
+    G --> I
+    H --> I
+    
+    I --> J[Home Assistant Entity Manager]
+    J --> K[Device-Specific Sensors]
+    
+    K --> L[HA Device Registry]
+    L --> M[Dashboard Display]
+```
+
+### Data Validation Pipeline
 
 ```python
-# Optimal vLLM configuration
-vllm_config = {
-    # Memory utilization (balance between throughput and stability)
-    "gpu_memory_utilization": 0.95,  # Use 95% of GPU memory
+class DataValidator:
+    """
+    Validates device data against type-specific contracts
+    """
     
-    # Batch processing limits
-    "max_num_batched_tokens": 8192,  # Maximum tokens per batch
-    "max_num_seqs": 256,             # Maximum concurrent sequences
+    def validate_inverter_data(self, data: dict) -> bool:
+        """Validate data against inverter contract"""
+        required_fields = ["input_voltage", "output_voltage", "load_active_power"]
+        return all(field in data for field in required_fields)
     
-    # CPU offloading for large models
-    "cpu_offload_gb": 10,            # Offload 10GB to CPU RAM
-    
-    # Swap space for high concurrency
-    "swap_space": 20,                # 20GB CPU swap space
-    
-    # Preemption strategy
-    "preemption_mode": "recompute",  # Recompute vs swap
-    
-    # Data type optimization
-    "dtype": "bfloat16",             # Optimal for most hardware
-}
+    def validate_controller_data(self, data: dict) -> bool:
+        """Validate data against controller contract"""
+        required_fields = ["pv_voltage", "pv_power", "daily_power_generation"]
+        return all(field in data for field in required_fields)
 ```
 
-### **Latency Optimization**
-Techniques for achieving <100ms response times:
+## Error Handling & Resilience
 
+### Device-Specific Error Handling
 ```python
-class LatencyOptimizer:
-    def __init__(self):
-        self.prompt_cache = {}
-        self.model_cache = {}
+class DeviceErrorHandler:
+    """
+    Device-type-aware error handling
+    """
     
-    async def optimize_inference(self, prompt: str, model_id: str):
-        # 1. Prompt caching
-        prompt_hash = hash(prompt)
-        if prompt_hash in self.prompt_cache:
-            return self.prompt_cache[prompt_hash]
+    INVERTER_CRITICAL_SENSORS = ["input_voltage", "output_voltage", "battery_voltage"]
+    CONTROLLER_CRITICAL_SENSORS = ["pv_voltage", "battery_voltage", "charging_current"]
+    
+    def handle_device_error(self, mac_address: str, error: Exception):
+        """
+        Handle errors based on device type and criticality
+        """
+        device_type = self.get_device_type(mac_address)
         
-        # 2. Model warming
-        if model_id not in self.model_cache:
-            await self.warm_model(model_id)
-        
-        # 3. Batch optimization
-        batch_size = self.calculate_optimal_batch_size()
-        
-        # 4. Prefill optimization
-        prefill_tokens = self.optimize_prefill(prompt)
-        
-        # 5. Speculative decoding (future)
-        # Use draft model for speculative generation
-        
-        result = await self.generate_with_optimization(
-            prompt, model_id, batch_size, prefill_tokens
-        )
-        
-        self.prompt_cache[prompt_hash] = result
-        return result
+        if device_type == "INVERTER":
+            # Inverter failures are critical for power monitoring
+            self.set_fallback_mode(mac_address, priority="HIGH")
+        elif device_type == "CONTROLLER":
+            # Controller failures affect solar monitoring
+            self.set_fallback_mode(mac_address, priority="MEDIUM")
 ```
 
----
+## Configuration Management
 
-## 🏗️ **Infrastructure & Deployment**
-
-### **Containerization**
-Docker containers for consistent deployment:
-
-```dockerfile
-# Dockerfile for vLLM backend
-FROM nvidia/cuda:12.1-devel-ubuntu22.04
-
-# Install Python and dependencies
-RUN apt-get update && apt-get install -y python3 python3-pip
-RUN pip3 install vllm fastapi uvicorn
-
-# Copy application code
-COPY backend/ /app/
-WORKDIR /app
-
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
-  CMD curl -f http://localhost:8000/health || exit 1
-
-# Start server
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-### **Kubernetes Deployment**
-Production-ready orchestration:
-
+### Device Configuration Schema
 ```yaml
-# deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: aicockpit-vllm
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: aicockpit-vllm
-  template:
-    metadata:
-      labels:
-        app: aicockpit-vllm
-    spec:
-      containers:
-      - name: vllm-server
-        image: aicockpit/vllm-server:latest
-        ports:
-        - containerPort: 8000
-        resources:
-          requests:
-            nvidia.com/gpu: 1
-            memory: "16Gi"
-            cpu: "4"
-          limits:
-            nvidia.com/gpu: 1
-            memory: "32Gi"
-            cpu: "8"
-        env:
-        - name: MODEL_NAME
-          value: "meta-llama/Meta-Llama-3.1-8B-Instruct"
-        - name: TENSOR_PARALLEL_SIZE
-          value: "1"
-        - name: GPU_MEMORY_UTILIZATION
-          value: "0.95"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          initialDelaySeconds: 60
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8000
-          initialDelaySeconds: 30
-          periodSeconds: 10
+# configuration.yaml
+blupow:
+  devices:
+    - mac_address: "D8:B6:73:BF:4F:75"
+      device_type: "INVERTER"
+      model: "RIV1230RCH-SPS"
+      name: "Main Inverter"
+      update_interval: 30
+      enabled: true
+      critical: true
+      
+    - mac_address: "C4:D3:6A:66:7E:D4"
+      device_type: "CONTROLLER"
+      model: "RNG-CTRL-RVR40"
+      name: "Solar Controller"
+      update_interval: 15
+      enabled: true
+      critical: false
 ```
 
-### **Auto-scaling Configuration**
-Horizontal Pod Autoscaler for dynamic scaling:
+## Performance Optimization
 
-```yaml
-# hpa.yaml
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: aicockpit-vllm-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: aicockpit-vllm
-  minReplicas: 2
-  maxReplicas: 10
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
-```
+### Multi-Device Performance Strategy
+- **Staggered Updates**: Prevent BLE interference
+- **Priority-Based Scheduling**: Critical devices get preference
+- **Adaptive Intervals**: Adjust based on device performance
+- **Connection Pooling**: Efficient BLE connection management
+- **Data Caching**: Reduce redundant device queries
 
----
+## Security Considerations
 
-## 📊 **Monitoring & Observability**
+### Device Authentication
+- **MAC Address Validation**: Verify known device MAC addresses
+- **Device Type Verification**: Ensure device reports expected type
+- **Data Integrity Checks**: Validate data against type contracts
+- **Connection Security**: Use BLE security features when available
 
-### **Performance Metrics**
-Comprehensive monitoring for production deployments:
+## References
 
-```python
-from prometheus_client import Counter, Histogram, Gauge
-import time
-
-# Metrics collection
-REQUEST_COUNT = Counter('aicockpit_requests_total', 'Total requests', ['method', 'endpoint'])
-REQUEST_LATENCY = Histogram('aicockpit_request_duration_seconds', 'Request latency')
-GPU_UTILIZATION = Gauge('aicockpit_gpu_utilization', 'GPU utilization percentage')
-MEMORY_USAGE = Gauge('aicockpit_memory_usage_bytes', 'Memory usage in bytes')
-
-class MetricsCollector:
-    def __init__(self):
-        self.start_time = time.time()
-    
-    def track_request(self, method: str, endpoint: str):
-        REQUEST_COUNT.labels(method=method, endpoint=endpoint).inc()
-    
-    def track_latency(self, duration: float):
-        REQUEST_LATENCY.observe(duration)
-    
-    def update_gpu_metrics(self):
-        # Collect GPU metrics
-        gpu_stats = self.get_gpu_stats()
-        GPU_UTILIZATION.set(gpu_stats['utilization'])
-        MEMORY_USAGE.set(gpu_stats['memory_used'])
-```
-
-### **Health Checks**
-Comprehensive health monitoring:
-
-```python
-from fastapi import FastAPI, HTTPException
-import torch
-import psutil
-
-app = FastAPI()
-
-@app.get("/health")
-async def health_check():
-    """Basic health check endpoint"""
-    return {"status": "healthy", "timestamp": time.time()}
-
-@app.get("/ready")
-async def readiness_check():
-    """Readiness check for Kubernetes"""
-    try:
-        # Check GPU availability
-        if not torch.cuda.is_available():
-            raise HTTPException(status_code=503, detail="GPU not available")
-        
-        # Check model loading
-        if not hasattr(app.state, 'llm_engine'):
-            raise HTTPException(status_code=503, detail="Model not loaded")
-        
-        # Check memory usage
-        memory_percent = psutil.virtual_memory().percent
-        if memory_percent > 95:
-            raise HTTPException(status_code=503, detail="High memory usage")
-        
-        return {"status": "ready", "gpu_count": torch.cuda.device_count()}
-    
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-@app.get("/metrics")
-async def get_metrics():
-    """Detailed metrics for monitoring"""
-    return {
-        "gpu_utilization": get_gpu_utilization(),
-        "memory_usage": get_memory_usage(),
-        "request_count": get_request_count(),
-        "average_latency": get_average_latency(),
-        "model_info": get_model_info()
-    }
-```
-
----
-
-This technical architecture provides the foundation for AiCockpit's revolutionary transformation into the world's most advanced AI-collaborative development platform. Every component is designed for performance, scalability, and seamless human-AI collaboration. 
+- [Renogy BT Library](https://github.com/cyrils/renogy-bt) - Device communication protocols
+- [Home Assistant Device Registry](https://developers.home-assistant.io/docs/device_registry_index/) - HA integration standards
+- [Bluetooth Low Energy Specifications](https://www.bluetooth.com/specifications/bluetooth-core-specification/) - BLE communication standards 

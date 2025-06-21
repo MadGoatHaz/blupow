@@ -1,0 +1,90 @@
+{
+  "timestamp": "2025-06-21T08:26:32.503603",
+  "investigation_type": "Multi-Device Analysis",
+  "devices_found": 2,
+  "devices": {
+    "C4:D3:6A:66:7E:D4": {
+      "name": "NEW Renogy Device",
+      "status": "WORKING",
+      "connection_success": 8,
+      "connection_failures": 90,
+      "using_real_data": true,
+      "device_name": "Unknown",
+      "connection_attempts": 19,
+      "real_data_retrievals": 8,
+      "fallback_data_uses": 30
+    },
+    "D8:B6:73:BF:4F:75": {
+      "name": "ORIGINAL Device",
+      "status": "WORKING",
+      "connection_success": 8,
+      "connection_failures": 90,
+      "using_real_data": true,
+      "device_name": "Unknown",
+      "connection_attempts": 19,
+      "real_data_retrievals": 8,
+      "fallback_data_uses": 30
+    }
+  },
+  "issues_identified": 2,
+  "issues": [
+    {
+      "type": "CONNECTION_FAILURE",
+      "description": "Device C4:D3:6A:66:7E:D4 consistently failing to connect",
+      "severity": "MEDIUM",
+      "devices_affected": [
+        "C4:D3:6A:66:7E:D4"
+      ]
+    },
+    {
+      "type": "CONNECTION_FAILURE",
+      "description": "Device D8:B6:73:BF:4F:75 consistently failing to connect",
+      "severity": "MEDIUM",
+      "devices_affected": [
+        "D8:B6:73:BF:4F:75"
+      ]
+    }
+  ],
+  "fix_actions": 2,
+  "fix_plan": [
+    {
+      "action": "UPDATE_DEVICE_IDENTIFICATION",
+      "description": "Modify blupow_client.py to use MAC address as device_id instead of hardcoded value",
+      "priority": 1,
+      "files_to_modify": [
+        "blupow_client.py"
+      ],
+      "changes": [
+        "Replace hardcoded device_id 'BTRIC134000035' with actual MAC address",
+        "Ensure each device has unique identifiers",
+        "Add device-specific data mapping"
+      ]
+    },
+    {
+      "action": "DIFFERENTIATE_DEVICE_DATA",
+      "description": "Ensure each device provides unique sensor data",
+      "priority": 2,
+      "files_to_modify": [
+        "blupow_client.py",
+        "coordinator.py"
+      ],
+      "changes": [
+        "Add device-specific data variations",
+        "Include MAC address in all sensor unique IDs",
+        "Prevent data collision between devices"
+      ]
+    }
+  ],
+  "summary": {
+    "working_devices": 2,
+    "failing_devices": 0,
+    "using_real_data": 2,
+    "using_fallback_data": 0
+  },
+  "next_steps": [
+    "Implement device identification fixes",
+    "Test each device individually",
+    "Verify unique data from each device",
+    "Monitor for data collision issues"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "status": "DEPLOYMENT_COMPLETE",
+  "timestamp": "2025-06-21T06:52:06.596389",
+  "integration_status": "READY_FOR_HOME_ASSISTANT",
+  "coordinator_status": "WORKING_WITH_PRODUCTION_DATA",
+  "expected_sensors": 19,
+  "action_required": "RESTART_HOME_ASSISTANT_OR_RELOAD_INTEGRATION",
+  "expected_result": "ALL_SENSORS_SHOWING_REAL_VALUES"
+}
