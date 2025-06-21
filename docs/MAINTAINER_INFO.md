@@ -3,7 +3,6 @@
 ## **PROJECT MAINTAINER**
 - **Name**: Garrett Hazlett
 - **Username**: @MadGoatHaz  
-- **Email**: ghazlett@gmail.com
 - **GitHub**: https://github.com/MadGoatHaz
 - **Profile**: https://github.com/MadGoatHaz
 
@@ -39,7 +38,6 @@
 
 ### **Project Maintainer**
 - **Developer**: Garrett Hazlett ([@MadGoatHaz](https://github.com/MadGoatHaz))
-- **Email**: ghazlett@gmail.com
 - **GitHub**: [MadGoatHaz/blupow](https://github.com/MadGoatHaz/blupow)
 
 ### **Support Development**  
@@ -49,14 +47,12 @@
 ### **Get Help**
 - **Issues**: [GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)
-- **Email**: ghazlett@gmail.com
 ```
 
 ### **Short Contact Section**
 ```markdown
 ### **Developer**
 - **Garrett Hazlett** ([@MadGoatHaz](https://github.com/MadGoatHaz))
-- **Email**: ghazlett@gmail.com
 
 ### **Support Development**
 - **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - Monthly sponsorship
@@ -77,7 +73,7 @@
 ### **Required Information in ALL Documentation:**
 - ✅ Maintainer name: **Garrett Hazlett**
 - ✅ GitHub username: **@MadGoatHaz**  
-- ✅ Email: **ghazlett@gmail.com**
+
 - ✅ Repository: **https://github.com/MadGoatHaz/blupow**
 - ✅ GitHub Sponsors: **https://github.com/sponsors/MadGoatHaz**
 - ✅ PayPal: **https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD**
