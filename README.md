@@ -119,6 +119,14 @@ This project is licensed under **GPL-3.0** in compliance with the [renogy-bt](ht
 
 ---
 
+## Project Philosophy
+
+-   **Professionalism**: All contributions, code, and discussions related to this project must maintain a high level of professionalism. We are building a reliable, robust tool for the community, and our conduct should reflect that goal.
+-   **Stability First**: The primary goal is to provide a stable, "it-just-works" experience. New features will be carefully considered and tested to avoid compromising the core stability of the integration.
+-   **Community Driven**: This project thrives on community contributions, whether it's code, documentation, bug reports, or user support in discussions.
+
+---
+
 ## Support Development
 
 If this integration has been useful for your solar monitoring setup:

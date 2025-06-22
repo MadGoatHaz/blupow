@@ -1,2 +1,3 @@
 renogy-bt
-paho-mqtt 
+paho-mqtt
+bleak 

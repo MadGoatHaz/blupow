@@ -63,20 +63,27 @@ graph TD
     end
 ```
 
-## Extensibility: Device Profiles
+## Extensibility: The Driver-Based Model
 
-The gateway is designed to be easily extensible to support new devices without changing the core gateway code. This is achieved through **Device Profiles**.
+The gateway is designed to be easily extensible to support new devices without changing the core gateway code. This is achieved through a **Driver-Based Model**.
 
-*   **Location**: Profiles are Python classes located in the `blupow_gateway/app/devices` directory.
-*   **Structure**: Each profile (e.g., `renogy_inverter.py`) defines a class that inherits from a `BaseDevice` class.
-*   **Function**: The profile contains all the device-specific logic:
-    *   The BLE characteristics to read/write to.
-    *   How to parse the raw byte data received from the device.
-    *   How to scale the raw data into human-readable values (e.g., dividing by 10 to get Volts).
-    *   The names and types of sensors the device exposes.
-*   **Loading**: The gateway reads the `devices.json` config file, finds the requested `device_profile`, and dynamically loads the corresponding Python module.
+*   **Location**: Drivers are Python classes located in the `blupow_gateway/app/devices/` directory.
+*   **Structure**: Each driver (e.g., `renogy_controller.py`) defines a class that inherits from the abstract `BaseDevice` class. This ensures all drivers expose a consistent interface.
+*   **Function**: The driver contains all the device-specific logic:
+    *   The specific BLE characteristics to use for communication.
+    *   The logic for building and parsing Modbus (or other protocol) commands.
+    *   A complete definition of all sensors the device exposes, including names, units, and Home Assistant device classes.
+*   **Dynamic Loading**: At startup, the gateway automatically scans the `devices` directory and loads any valid driver it finds. The `type` name used in the configuration (e.g., `renogy_controller`) is automatically derived from the driver's class name (`RenogyController`).
 
-This approach makes adding a new device as simple as creating a new profile file that defines its specific communication protocol and data structure.
+This approach makes adding a new, unique device as simple as creating a new driver file that implements the `BaseDevice` contract.
+
+### The `GenericModbusDevice` Driver: Codeless Integration
+
+To further enhance extensibility, the gateway includes the `generic_modbus_device.py` driver. This special driver allows users to integrate a vast range of new devices **without writing any Python code**.
+
+*   **Configuration-Driven**: By setting a device's `type` to `generic_modbus_device` in the configuration, a user can provide a `config` block that defines the device's entire protocol.
+*   **Capabilities**: The user can specify the Modbus device ID, BLE UUIDs, and a complete list of sensors, including their registers, data types, and scaling factors.
+*   **Reference**: For detailed instructions, see the **[Custom Device Configuration Guide](guides/CUSTOM_DEVICE_GUIDE.md)**.
 
 ## Future Vision: Fully UI-Driven Management
 

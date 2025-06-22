@@ -104,6 +104,60 @@ pip install homeassistant
 
 ---
 
+## 🏗️ How to Add Support for a New Device
+
+The BluPow Gateway is designed to be easily extensible. All device-specific logic is contained within **Driver** classes.
+
+### **Option 1: The Device Uses Modbus (The Easy Way)**
+
+If your device uses a standard Modbus protocol over BLE, you can likely add support without writing any code by using the `GenericModbusDevice` driver.
+
+1.  **Read the Guide**: First, read the **[Custom Device Configuration Guide](guides/CUSTOM_DEVICE_GUIDE.md)** to understand how it works.
+2.  **Find Device Specs**: You will need to know your device's Modbus register map and the UUIDs for its BLE service.
+3.  **Configure `devices.json`**: Add a new entry for your device with the `type` set to `generic_modbus_device` and create the required `config` block.
+4.  **Test**: Restart the gateway and check the logs. If the configuration is correct, your device should appear in Home Assistant.
+5.  **Contribute**: If it works, please consider sharing your `config` block in a GitHub discussion so others can benefit!
+
+### **Option 2: The Device Uses a Custom Protocol (The Developer Way)**
+
+If your device has a non-standard communication protocol, you will need to create a new Python driver.
+
+1.  **Create a New Driver File**: In the `blupow_gateway/app/devices/` directory, create a new file (e.g., `my_new_device.py`).
+2.  **Create the Driver Class**: Inside the file, create a class that inherits from `BaseDevice`. The class name should be in CamelCase (e.g., `MyNewDevice`). The gateway will automatically use a snake_case version of this name (`my_new_device`) as the `type` in the configuration.
+    ```python
+    from .base import BaseDevice
+    # ... other imports
+
+    class MyNewDevice(BaseDevice):
+        """Driver for the awesome new device."""
+        
+        def __init__(self, address: str, device_type: str):
+            super().__init__(address, device_type)
+            # Add any device-specific initialization here
+        
+        def get_sensor_definitions(self) -> List[Dict[str, Any]]:
+            # Return a list of dicts defining your sensors for HA discovery
+            # See renogy_controller.py for a detailed example
+            return [
+                {"key": "voltage", "name": "Voltage", "unit": "V"},
+                # ... other sensors
+            ]
+
+        async def get_data(self) -> Optional[Dict[str, Any]]:
+            # This is the core logic. Connect to the device via Bleak,
+            # send commands, parse data, and return a dictionary 
+            # where keys match the 'key' in your sensor definitions.
+            # See renogy_controller.py for a detailed example.
+            pass
+    ```
+3.  **Implement the Methods**:
+    *   `get_sensor_definitions()`: This method must return a list of dictionaries, one for each sensor your device exposes. This data is used for Home Assistant's MQTT discovery.
+    *   `get_data()`: This is where you implement the actual communication. Use the `bleak` library to connect, write, and read data. Parse the data and return it in a dictionary.
+4.  **Test**: Configure your new device in `devices.json` using the auto-generated `type` and test it thoroughly.
+5.  **Submit a Pull Request**: Once you are confident it works well, submit a PR to share your new driver with the community.
+
+---
+
 ## 🎨 **Coding Standards**
 
 ### **Python Style Guide**
@@ -241,29 +295,24 @@ class TestBluPowSensor:
 
 ## 📦 **Project Structure**
 
-### **Core Integration Files**
+### **Core Gateway Files (`blupow_gateway/app`)**
 ```
-blupow/
-├── __init__.py              # Integration initialization
-├── manifest.json            # Integration metadata
-├── config_flow.py           # Configuration UI
-├── coordinator.py           # Data coordination & device communication
-├── sensor.py                # Home Assistant sensor entities
-├── blupow_client.py         # Bluetooth device client
-├── const.py                 # Constants, sensor definitions
-├── strings.json             # UI strings
-└── translations/            # Multi-language support
-    └── en.json
+app/
+├── main.py              # Main application entrypoint, polling loop, MQTT client
+├── utils.py             # Shared helper functions (e.g., CRC calculation)
+└── devices/
+    ├── base.py          # Abstract Base Class for all drivers
+    ├── renogy_controller.py  # Example of a standard driver
+    └── generic_modbus_device.py # The powerful configuration-driven driver
 ```
 
-### **Development & Tools**
+### **Home Assistant Component (`custom_components/blupow`)**
 ```
-scripts/                     # Development and deployment tools
-├── quick_integration_test.py    # Fast testing
-├── comprehensive_integration_test.py  # Full test suite
-├── deploy_production_fix.py     # Production deployment
-├── bluetooth_connection_fix.py  # Connection debugging
-└── validate_integration.py      # Integration validation
+custom_components/blupow/
+├── __init__.py          # Integration setup
+├── manifest.json        # Integration metadata
+├── config_flow.py       # Sets up connection to MQTT broker
+└── sensor.py            # Defines the sensor entities in HA
 ```
 
 ### **Documentation**
@@ -400,185 +449,3 @@ python3 scripts/enable_debug_logging.py
 ### **2. Making Changes**
 - **Write clear commit messages**: 
   ```
-  feat: add support for new device model XYZ
-  
-  - Add device type detection for MAC pattern AA:BB:CC:*
-  - Create sensor definitions for 15 new sensors
-  - Update documentation with device-specific setup
-  
-  Fixes #123
-  ```
-
-### **3. Testing Checklist**
-- [ ] **Unit tests pass**: All existing functionality works
-- [ ] **Integration tests pass**: End-to-end testing successful  
-- [ ] **Device testing**: Tested with actual hardware (if applicable)
-- [ ] **Documentation updated**: README, guides updated as needed
-- [ ] **No breaking changes**: Existing setups continue to work
-
-### **4. Pull Request**
-- **Create PR** with descriptive title and detailed description
-- **Reference issues**: Link to related GitHub issues
-- **Provide context**: Explain why the change is needed
-- **Include screenshots**: Show UI changes if applicable
-
-### **5. Review Process**
-- **Automated checks**: CI/CD pipeline must pass
-- **Code review**: Core maintainers will review
-- **Testing**: Community testing and feedback
-- **Approval**: Final approval from project maintainers
-
----
-
-## 🐛 **Reporting Bugs**
-
-### **Before Reporting**
-1. **Search existing issues**: Check if bug already reported
-2. **Test with latest version**: Ensure you're using current release
-3. **Run diagnostics**: Use provided diagnostic tools
-4. **Gather information**: Collect logs and system info
-
-### **Bug Report Template**
-```markdown
-## 🐛 Bug Report
-
-### **Description**
-Clear description of what the bug is.
-
-### **Expected Behavior**
-What you expected to happen.
-
-### **Actual Behavior**
-What actually happened.
-
-### **Environment**
-- **Home Assistant Version**: 2024.x.x
-- **BluPow Integration Version**: x.x.x  
-- **Device Model**: RIV1230RCH-SPS
-- **Device MAC**: D8:B6:73:BF:4F:75
-- **Installation Method**: HACS / Manual
-
-### **Reproduction Steps**
-1. Go to '...'
-2. Click on '...'
-3. See error
-
-### **Logs**
-```
-[Paste relevant log entries here]
-```
-
-### **Additional Context**
-Screenshots, configuration files, etc.
-```
-
----
-
-## 💡 **Feature Requests**
-
-### **Before Requesting**
-- **Check existing requests**: Look for similar feature requests
-- **Consider use case**: Is this beneficial to the community?
-- **Think about implementation**: How complex would this be?
-
-### **Feature Request Template**
-```markdown
-## ✨ Feature Request
-
-### **Problem/Use Case**
-Description of the problem this feature would solve.
-
-### **Proposed Solution**
-Your idea for how to solve it.
-
-### **Alternative Solutions**
-Other approaches you've considered.
-
-### **Additional Context**
-Screenshots, mockups, examples from other projects.
-
-### **Implementation Ideas**
-Technical thoughts on implementation (optional).
-```
-
----
-
-## 🏆 **Recognition**
-
-### **Contributor Levels**
-- **🌟 Contributors**: Code contributions, bug reports, documentation
-- **⭐ Regular Contributors**: Multiple contributions, community help
-- **🎖️ Core Contributors**: Major features, architectural decisions
-- **👑 Maintainers**: Project leadership, release management
-
-### **How We Recognize Contributors**
-- **GitHub**: Contributors listed in repository
-- **Documentation**: Credit in README and docs
-- **Releases**: Recognition in changelog
-- **Community**: Shout-outs in discussions and forums
-
----
-
-## 📞 **Getting Help**
-
-### **Development Questions**
-- **GitHub Discussions**: Best for general questions
-- **Discord**: Real-time chat with community
-- **Issues**: For specific problems or bugs
-
-### **Architecture Questions**  
-- **Read the docs**: Start with [Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)
-- **Code comments**: Inline documentation explains complex logic
-- **Ask maintainers**: Tag @MadGoatHaz in issues/PRs
-- **Email support**: ghazlett@gmail.com for complex technical questions
-
-### **Community Support**
-- **Home Assistant Forum**: General Home Assistant integration questions
-- **Reddit**: r/homeassistant community discussions
-- **Discord**: Home Assistant development channels
-
----
-
-## 📜 **Code of Conduct**
-
-We are committed to providing a welcoming and inspiring community for all. Please:
-
-- **Be respectful**: Treat everyone with respect and kindness
-- **Be collaborative**: Work together constructively
-- **Be patient**: Help newcomers learn and grow
-- **Be inclusive**: Welcome people of all backgrounds and skill levels
-
-Unacceptable behavior includes harassment, discrimination, or any form of disrespectful conduct. Report issues to project maintainers.
-
----
-
-## 🙏 **Thank You!**
-
-Your contributions make this project better for everyone. Whether you're:
-- 🐛 **Fixing bugs**
-- ✨ **Adding features** 
-- 📚 **Improving documentation**
-- 🧪 **Writing tests**
-- 💬 **Helping other users**
-
-...every contribution matters and is appreciated! 
-
-**Welcome to the BluPow community! 🎉**
-
----
-
-## 📞 **Contact & Support**
-
-### **Project Maintainer**
-- **Developer**: Garrett Hazlett ([@MadGoatHaz](https://github.com/MadGoatHaz))
-- **Email**: ghazlett@gmail.com
-- **GitHub**: [MadGoatHaz/blupow](https://github.com/MadGoatHaz/blupow)
-
-### **Support Development**  
-- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - Monthly sponsorship
-- **[PayPal Donation](https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD)** - One-time donation
-
-### **Get Help**
-- **Issues**: [GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)
-- **Email**: ghazlett@gmail.com 
