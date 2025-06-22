@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [3.0.0] - 2025-06-21 - 🎉 **The Container Revolution: Unmatched Stability**
+## [3.0.0] - 2025-06-22 - 🎉 **The Container Revolution: Unmatched Stability**
 
 ### ✨ **Added**
 - **Managed MQTT Broker**: New "Quick Install" option deploys a containerized Mosquitto broker (`blupow-mosquitto`) for a zero-configuration, self-contained system.
