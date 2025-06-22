@@ -161,6 +161,19 @@ $RECYCLE.BIN/
 # ===============================================
 # 🎯 Project Specific Exclusions
 # ===============================================
+# User-specific runtime configurations
+ha_config/
+mosquitto_config/
+blupow_config/
+blupow_broker/
+
+# Log files
+mqtt_log.txt
+log_capture.txt
+
+# Script results and reports
+results/
+
 # BluPow specific temporary files
 blupow_temp*
 *blupow_backup*

@@ -1,107 +1,63 @@
-"""Config flow for BluPow integration."""
-from __future__ import annotations
-
+"""Config flow for BluPow."""
 import logging
-from typing import Any, Dict, Optional
-
+from typing import Any
 import voluptuous as vol
 
-from homeassistant import config_entries
-from homeassistant.const import CONF_ADDRESS, CONF_NAME
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.components.bluetooth import (
+    BluetoothServiceInfo,
+    async_discovered_service_info,
+)
+from homeassistant.config_entries import ConfigFlow
+from homeassistant.const import CONF_ADDRESS
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.components import mqtt
+import json
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_DEVICE_TYPE
 
 _LOGGER = logging.getLogger(__name__)
 
+MQTT_COMMAND_TOPIC = "blupow/command"
 
-class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+
+class BluPowConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for BluPow."""
 
     VERSION = 1
 
     async def async_step_user(
-        self, user_input: Optional[Dict[str, Any]] = None
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
-        errors = {}
-
         if user_input is not None:
-            # Manual entry
-            address = user_input[CONF_ADDRESS]
-            name = user_input.get(CONF_NAME, f"BluPow {address}")
-            
-            # Validate address format
-            if self._is_valid_mac_address(address):
-                await self.async_set_unique_id(address)
-                self._abort_if_unique_id_configured()
-                
-                return self.async_create_entry(
-                    title=name,
-                    data={
-                        CONF_ADDRESS: address,
-                        CONF_NAME: name,
-                    },
-                )
-            else:
-                errors[CONF_ADDRESS] = "invalid_address"
+            await self.async_set_unique_id(user_input[CONF_ADDRESS])
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(title=user_input[CONF_ADDRESS], data=user_input)
 
-        # Build form schema
-        schema = vol.Schema({
-            vol.Required(CONF_ADDRESS): str,
-            vol.Optional(CONF_NAME): str,
-        })
+        current_addresses = self._async_current_ids()
+        
+        # Get all bluetooth service infos
+        service_infos = async_discovered_service_info(self.hass)
+        
+        discovered_devices = {}
+        for service_info in service_infos:
+            # We assume Renogy devices will have a name starting with BT
+            if service_info.name.startswith("BT") and service_info.address not in current_addresses:
+                discovered_devices[service_info.address] = service_info.name
+
+        if not discovered_devices:
+            return self.async_abort(reason="no_devices_found")
 
         return self.async_show_form(
             step_id="user",
-            data_schema=schema,
-            errors=errors,
+            data_schema=vol.Schema(
+                {vol.Required(CONF_ADDRESS): vol.In(discovered_devices)}
+            ),
         )
 
-    def _is_valid_mac_address(self, address: str) -> bool:
-        """Validate MAC address format."""
-        import re
-        mac_pattern = re.compile(r'^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$')
-        return bool(mac_pattern.match(address))
 
-    @staticmethod
-    @callback
-    def async_get_options_flow(config_entry):
-        """Get the options flow for this handler."""
-        return OptionsFlowHandler(config_entry)
-
-
-class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for BluPow."""
-
-    def __init__(self, config_entry):
-        """Initialize options flow."""
-        super().__init__()
-        # Don't set config_entry explicitly - it's handled by the parent class
-
-    async def async_step_init(
-        self, user_input: Optional[Dict[str, Any]] = None
-    ) -> FlowResult:
-        """Manage the options."""
-        if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema({
-                vol.Optional(
-                    "update_interval",
-                    default=self.config_entry.options.get("update_interval", 30),
-                ): vol.All(vol.Coerce(int), vol.Range(min=10, max=300)),
-                vol.Optional(
-                    "enable_diagnostics",
-                    default=self.config_entry.options.get("enable_diagnostics", False),
-                ): bool,
-                vol.Optional(
-                    "connection_timeout",
-                    default=self.config_entry.options.get("connection_timeout", 20),
-                ): vol.All(vol.Coerce(int), vol.Range(min=5, max=60)),
-            }),
-        )
+class CannotConnect(HomeAssistantError):
+    """Error to indicate we cannot connect."""
 

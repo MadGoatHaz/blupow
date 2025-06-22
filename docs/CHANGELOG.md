@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.0.0] - 2025-06-21 - 🎉 **The Container Revolution: Unmatched Stability**
+
+### ✨ **Added**
+- **Managed MQTT Broker**: New "Quick Install" option deploys a containerized Mosquitto broker (`blupow-mosquitto`) for a zero-configuration, self-contained system.
+- **Docker-based Gateway**: The BluPow poller now runs as a standalone Docker container (`blupow-gateway`), completely isolated from Home Assistant.
+- **Interactive Installer**: A new `install.sh` script that automates the entire setup process.
+- **Dedicated Docker Network**: All components communicate over an isolated `blupow-net` network for reliability.
+- **Diagnostic Tools**: Added `mqtt_viewer.py` to inspect live MQTT traffic.
+
+### 🎯 **Changed**
+- **Complete Architectural Overhaul**: Moved from a direct Home Assistant integration to a decoupled, three-container system (HA, Gateway, Broker). This is a fundamental shift in the project's design.
+- **Installation Method**: The primary installation method is now the `install.sh` script, not HACS or manual file copying.
+- **Configuration**: Device configuration is now managed in a dedicated host-mounted volume (`~/blupow_config/devices.json`).
+
+### 🚫 **Removed**
+- **Direct Bluetooth in HA**: The Home Assistant component no longer directly accesses Bluetooth hardware, eliminating a major source of instability.
+- **HACS support is deprecated** as the primary installation method in favor of the Docker-based deployment.
+
+### 🔧 **Fixed**  
+- **Data Scaling Issues**: Corrected the Renogy Inverter data parsing to provide accurate sensor readings (e.g., Battery Voltage).
+- **"Unknown" Sensor State**: The new architecture and data fix resolves the core issue of sensors failing to report data.
+
 ## [2.0.0] - 2025-01-21 - **🎉 MAJOR STABILITY RELEASE**
 
 ### ✨ **Added**

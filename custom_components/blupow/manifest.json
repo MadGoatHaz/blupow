@@ -1,23 +1,12 @@
 {
   "domain": "blupow",
-  "name": "BluPow - Renogy Device Integration",
-  "version": "2.0.0",
-  "documentation": "https://github.com/MadGoatHaz/blupow",
-  "issue_tracker": "https://github.com/MadGoatHaz/blupow/issues",
-  "codeowners": ["@MadGoatHaz"],
-  "dependencies": ["bluetooth"],
-  "requirements": ["bleak>=0.21.0"],
-  "iot_class": "local_polling",
+  "name": "BluPow Renewable Energy",
+  "codeowners": ["@madgoat"],
   "config_flow": true,
-  "integration_type": "device",
-  "after_dependencies": ["bluetooth"],
-  "bluetooth": [
-    {
-      "connectable": true,
-      "manufacturer_id": 65535,
-      "service_uuid": "0000fff0-0000-1000-8000-00805f9b34fb"
-    }
-  ],
-  "loggers": ["custom_components.blupow"]
+  "dependencies": ["mqtt"],
+  "documentation": "https://github.com/your_repo/blupow/blob/main/README.md",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/your_repo/blupow/issues",
+  "version": "3.0.0"
 }
 

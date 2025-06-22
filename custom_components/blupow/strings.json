@@ -2,17 +2,11 @@
   "config": {
     "step": {
       "user": {
-        "title": "BluPow Renogy Device Setup",
-        "description": "Configure your Renogy device for Home Assistant integration. Based on cyrils/renogy-bt patterns.",
+        "title": "Select your BluPow Device",
+        "description": "Choose your Renogy device from the list of discovered Bluetooth devices and specify its type.",
         "data": {
-          "address": "Device MAC Address",
-          "name": "Device Name (optional)",
-          "use_discovery": "Use automatic device discovery"
-        },
-        "data_description": {
-          "address": "MAC address of your Renogy device (e.g., D8:B6:73:BF:4F:75)",
-          "name": "Friendly name for your device",
-          "use_discovery": "Automatically scan for and identify Renogy devices using Cyril's patterns"
+          "address": "Device",
+          "device_type": "Device Type"
         }
       },
       "discovery": {
@@ -36,27 +30,18 @@
       "unknown": "Unexpected error occurred"
     },
     "abort": {
-      "already_configured": "Device with this MAC address is already configured"
+      "already_configured": "Device with this MAC address is already configured.",
+      "no_devices_found": "No new, unconfigured BluPow/Renogy devices were found nearby. Please ensure your device is powered on and in range of your Home Assistant's Bluetooth adapter. If you have already configured all your devices, you can close this dialog."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "BluPow Options",
-        "description": "Configure advanced options for your BluPow integration",
-        "data": {
-          "update_interval": "Update interval (seconds)",
-          "enable_diagnostics": "Enable diagnostic logging",
-          "connection_timeout": "Connection timeout (seconds)"
-        },
-        "data_description": {
-          "update_interval": "How often to update sensor data (10-300 seconds)",
-          "enable_diagnostics": "Enable detailed logging for troubleshooting",
-          "connection_timeout": "Maximum time to wait for device connection (5-60 seconds)"
-        }
+        "description": "There are currently no options to configure for this integration."
       }
     }
   },
-  "title": "BluPow: Renogy Bluetooth"
+  "title": "BluPow"
 }
 

@@ -1,270 +1,154 @@
 # 📦 BluPow Installation Guide
 
-Complete step-by-step installation instructions for the BluPow Home Assistant integration.
+This guide provides step-by-step instructions for installing the BluPow Home Assistant integration using the new containerized architecture.
 
 ---
 
-## 🚀 **Method 1: HACS Installation (Recommended)**
+## Architecture Overview
 
-### **Prerequisites**
-- ✅ Home Assistant OS/Supervised/Container/Core
-- ✅ HACS installed and configured  
-- ✅ Bluetooth adapter available to Home Assistant
-- ✅ Your BluPow device MAC address
+The BluPow integration uses a modern, robust architecture consisting of three main components:
 
-### **Step 1: Add Custom Repository**
-1. **Open HACS** in Home Assistant
-2. Click **"Integrations"**
-3. Click the **three dots (⋯)** in the top right
-4. Select **"Custom repositories"**
-5. **Add Repository**:
-   - **Repository**: `https://github.com/MadGoatHaz/blupow`
-   - **Category**: `Integration`
-6. Click **"Add"**
+1.  **BluPow Gateway**: A dedicated Docker container that handles all Bluetooth communication with your Renogy devices.
+2.  **MQTT Broker**: A dedicated Mosquitto MQTT broker, also in a Docker container, that acts as a message bus.
+3.  **Home Assistant Integration**: The custom component within Home Assistant that listens for MQTT messages and creates sensors.
 
-### **Step 2: Install BluPow Integration**
-1. **Search** for "BluPow" in HACS integrations
-2. Click **"BluPow - Renogy Device Integration"**
-3. Click **"Download"**
-4. **Restart Home Assistant**
+This decoupled system is significantly more stable and reliable than older methods. The installer script automates the setup of this entire stack.
 
-### **Step 3: Add Integration**
-1. Go to **Settings** → **Devices & Services**
-2. Click **"+ Add Integration"** (bottom right)
-3. Search for **"BluPow"**
-4. **Enter your device information**:
-   - **MAC Address**: Your device MAC (e.g., `XX:XX:XX:XX:XX:XX`)
-   - **Device Name**: Descriptive name (e.g., "Solar Inverter")
-5. Click **"Submit"**
+## Prerequisites
 
-### **Step 4: Verify Installation**
-- Check **Devices & Services** → **BluPow**
-- You should see your device with 17-20 sensors
-- All sensors should show real data (not "unavailable")
+Before you begin, ensure you have the following installed and configured on your system (the machine that will run the gateway, e.g., your Home Assistant server or a Raspberry Pi):
+
+-   **Git**: To clone the repository.
+-   **Docker**: The containerization engine.
+-   **Docker Compose**: For managing multi-container applications.
+-   **Bluetooth**: A working Bluetooth adapter on the host machine.
+-   **User Permissions**: Your user account must have permission to run `docker` commands without `sudo`.
 
 ---
 
-## 🛠️ **Method 2: Manual Installation**
+## 🚀 Installation Steps
 
-### **Prerequisites**
-- ✅ SSH/Terminal access to Home Assistant
-- ✅ File system access to `/config` directory
+### Step 1: Clone the Repository
 
-### **Step 1: Download Integration**
+Open a terminal on your host machine and clone the BluPow project.
+
 ```bash
-# Navigate to custom components directory
-cd /config/custom_components
-
-# Download the integration
 git clone https://github.com/MadGoatHaz/blupow.git
-
-# Or download and extract manually
-wget https://github.com/MadGoatHaz/blupow/archive/main.zip
-unzip main.zip
-mv blupow-main blupow
+cd blupow
 ```
 
-### **Step 2: Verify File Structure**
-```
-/config/custom_components/blupow/
-├── __init__.py
-├── manifest.json
-├── config_flow.py
-├── coordinator.py
-├── sensor.py
-├── blupow_client.py
-├── const.py
-├── strings.json
-└── translations/
-    └── en.json
-```
+### Step 2: Run the Interactive Installer
 
-### **Step 3: Restart Home Assistant**
+The `install.sh` script is the heart of the setup process. It will guide you through creating the containers, networks, and configuration files.
+
 ```bash
-# Restart Home Assistant
-# Method depends on your installation type
-docker restart homeassistant  # Docker
-systemctl restart home-assistant  # Systemd
+./scripts/install.sh
 ```
 
-### **Step 4: Add Integration**
-Follow **Step 3** from the HACS method above.
+### Step 3: Choose an Installation Method
 
----
+The installer will present you with two options:
 
-## 🔍 **Finding Your Device MAC Address**
+*   **1) Quick Install (Recommended)**: This is the preferred method for 99% of users. It will automatically:
+    *   Create a dedicated Docker network (`blupow-net`).
+    *   Create and run a managed Mosquitto MQTT broker (`blupow-mosquitto`).
+    *   Create and run the BluPow Gateway container (`blupow-gateway`).
+    *   Configure the gateway to use the managed broker.
 
-### **Method 1: Bluetooth Scanner**
-```bash
-# Use the built-in discovery script
-python3 scripts/blupow_device_discovery.py
+*   **2) Custom Install (Advanced)**: This option is for advanced users who want to use their own existing MQTT broker. You will be prompted to enter the hostname/IP address, port, username, and password for your broker.
+
+**For the best experience, please choose Option 1.**
+
+### Step 4: Configure Your Devices
+
+After the installer completes, you need to tell the gateway which devices to connect to.
+
+1.  **Find your device's MAC address**. You can use a Bluetooth scanning app on your phone or a command-line tool like `bluetoothctl scan on`.
+2.  **Open the device configuration file**: This file is located at `~/blupow_config/devices.json`.
+3.  **Add your device(s)** to the JSON file.
+
+**Example `devices.json`:**
+```json
+{
+  "devices": [
+    {
+      "mac": "D8:B6:73:BF:4F:75",
+      "device_profile": "renogy_inverter",
+      "friendly_name": "My Renogy Inverter"
+    }
+  ]
+}
 ```
 
-### **Method 2: Phone App**
-1. Install a **Bluetooth scanner app** on your phone
-2. Look for devices starting with:
-   - `RIV1230` (Inverters)
-   - `RNG-CTRL` (Controllers)  
-   - `BT-TH` (Alternative naming)
+*   `mac`: The Bluetooth MAC address of your device.
+*   `device_profile`: The name of the Python file in `blupow_addon/rootfs/app/devices` that matches your device (e.g., `renogy_inverter`).
+*   `friendly_name`: A name that will be used in Home Assistant.
 
-### **Method 3: Home Assistant Bluetooth**
-1. **Settings** → **Devices & Services** → **Bluetooth**
-2. Look for **discovered devices**
-3. Find your Renogy device
+4.  **Restart the gateway** for the changes to take effect:
+    ```bash
+    docker restart blupow-gateway
+    ```
 
-### **Method 4: Manual Discovery**
-```bash
-# Linux/macOS terminal
-hcitool scan
-bluetoothctl scan on
+### Step 5: Add the Integration in Home Assistant
 
-# Look for MAC addresses like:
-# XX:XX:XX:XX:XX:XX - RIV1230RCH-SPS  
-# YY:YY:YY:YY:YY:YY - RNG-CTRL-RVR40
-```
+1.  Make sure you have the main **MQTT Integration** installed and configured in Home Assistant. If you used the "Quick Install", you must configure the HA MQTT integration to connect to the BluPow broker.
+    *   **Broker**: The IP address of the machine running the BluPow containers.
+    *   **Port**: `1883`
+    *   No username or password is required.
+2.  In Home Assistant, go to **Settings > Devices & Services**.
+3.  Click **+ Add Integration** and search for **BluPow**.
+4.  The integration should be found. It doesn't require any configuration in the UI, as it works entirely via MQTT discovery.
 
 ---
 
-## ⚙️ **Configuration Options**
+## ✅ Verifying the Installation
 
-### **Basic Configuration**
-No YAML configuration required! The integration automatically:
-- ✅ Discovers appropriate sensors for your device type
-- ✅ Sets up proper device classes and units  
-- ✅ Configures 30-second update intervals
-- ✅ Handles connection management and fallbacks
+If your sensors aren't appearing, follow these steps to diagnose the issue:
 
-### **Optional YAML Configuration**
-```yaml
-# configuration.yaml (optional customization)
-blupow:
-  update_interval: 30  # Update frequency in seconds (default: 30)
-  
-# Example: Custom update interval
-blupow:
-  update_interval: 15  # Faster updates (more Bluetooth traffic)
-```
+1.  **Check the Docker Containers**:
+    ```bash
+    docker ps
+    ```
+    You should see `blupow-gateway` and `blupow-mosquitto` with a status of `Up`.
 
-### **Integration Options**
-When adding the integration, you can configure:
-- **MAC Address**: Your device's Bluetooth MAC
-- **Device Name**: Friendly name for Home Assistant
-- **Update Interval**: How often to poll the device (optional)
+2.  **Check the Gateway Logs**:
+    ```bash
+    docker logs blupow-gateway
+    ```
+    Look for messages indicating it has connected to your device and is publishing data.
+
+3.  **Monitor MQTT Traffic**:
+    Use the provided `mqtt_viewer.py` script to see the raw data being published by the gateway.
+    ```bash
+    python3 scripts/mqtt_viewer.py
+    ```
+    If you see data here, the gateway is working. The problem is likely with the connection between Home Assistant and the MQTT broker.
 
 ---
 
-## 🎯 **Device-Specific Setup**
+## 🔄 Upgrading
 
-### **🔌 Inverter (RIV1230RCH-SPS)**
-- **MAC Pattern**: Usually starts with `D8:B6:73:BF:`
-- **Expected Sensors**: 17 sensors for AC monitoring, battery management
-- **Use Case**: Home backup power, AC load monitoring
+To upgrade to the latest version:
 
-**Typical MAC**: `XX:XX:XX:XX:XX:XX`
-
-### **☀️ Controller (RNG-CTRL-RVR40)**  
-- **MAC Pattern**: Usually starts with `C4:D3:6A:66:`
-- **Expected Sensors**: 20 sensors for solar production, MPPT charging
-- **Use Case**: Solar system monitoring, battery charging control
-
-**Typical MAC**: `YY:YY:YY:YY:YY:YY`
+1.  Navigate to the `blupow` directory.
+2.  Pull the latest changes from GitHub:
+    ```bash
+    git pull
+    ```
+3.  Re-run the installer. It will rebuild the gateway container with the latest code.
+    ```bash
+    ./scripts/install.sh
+    ```
 
 ---
 
-## 🚨 **Troubleshooting Installation**
+## 🚨 Troubleshooting
 
-### **Problem: Integration Not Found**
-```bash
-# Verify files are in correct location
-ls -la /config/custom_components/blupow/
-
-# Check Home Assistant logs
-docker logs homeassistant | grep blupow
-```
-
-### **Problem: Sensors Show "Unavailable"**
-```bash
-# Run stability fix
-python3 deploy_production_stability.py
-
-# Test device connectivity
-python3 scripts/direct_device_test.py
-```
-
-### **Problem: Device Not Connecting**
-1. **Check Bluetooth**: Ensure device is in range and powered
-2. **Verify MAC**: Use discovery tools to confirm MAC address
-3. **Check Conflicts**: Ensure no other apps are connected to device
-
-### **Problem: Duplicate Sensors**
-```bash
-# Clean up duplicate entities
-python3 cleanup_duplicate_sensors.py
-
-# Re-add integration via Home Assistant UI
-```
-
----
-
-## ✅ **Verification Steps**
-
-### **1. Check Integration Status**
-```bash
-# Quick health check
-python3 scripts/quick_integration_test.py
-```
-
-### **2. Verify Sensors**
-- **Go to**: Settings → Devices & Services → BluPow
-- **Check**: All sensors show real values (not "unavailable")
-- **Verify**: Device info shows correct model and MAC
-
-### **3. Test Dashboard Integration**
-- **Create** a simple dashboard card with BluPow sensors
-- **Verify** values update every 30 seconds
-- **Check** Energy Dashboard integration (if applicable)
-
----
-
-## 🎉 **Post-Installation**
-
-### **🏠 Add to Dashboard**
-Create beautiful energy monitoring dashboards with your new sensors!
-
-### **⚡ Energy Dashboard**
-BluPow sensors automatically integrate with Home Assistant's Energy Dashboard for solar production and consumption tracking.
-
-### **🤖 Automation Ideas**
-- **Low Battery Alerts**: Notify when SOC < 20%
-- **Solar Production Tracking**: Log peak production times
-- **Load Balancing**: Manage high-power devices based on battery level
-- **Backup Power Monitoring**: Track runtime during outages
-
----
-
-## 📚 **Next Steps**
-
-1. **[Dashboard Examples](docs/DASHBOARD_EXAMPLES.md)** - Beautiful UI layouts
-2. **[Automation Guide](docs/AUTOMATION_GUIDE.md)** - Smart home integration
-3. **[Energy Dashboard Setup](docs/ENERGY_DASHBOARD.md)** - Track your solar production
-4. **[Troubleshooting](docs/troubleshooting/TROUBLESHOOTING.md)** - Common issues and solutions
-
----
-
-**🎯 Installation Complete! Your BluPow device is now fully integrated with Home Assistant!** ✨
-
----
-
-## 📞 **Support & Contact**
-
-### **Developer**
-- **Garrett Hazlett** ([@MadGoatHaz](https://github.com/MadGoatHaz))
-- **Email**: ghazlett@gmail.com
-
-### **Support Development**
-- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - Monthly sponsorship
-- **[PayPal Donation](https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD)** - One-time donation
-
-### **Get Help**
-- **Issues**: [GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)
-- **Email**: ghazlett@gmail.com 
+-   **Permission Denied when running `install.sh`**:
+    Run `chmod +x scripts/install.sh`.
+-   **Containers fail to start**:
+    Check the logs for each container (`docker logs <container_name>`) for specific error messages. This is often due to an incorrectly configured `devices.json` or issues with the host's Bluetooth service.
+-   **"Sensors Unknown" in Home Assistant**:
+    This usually means Home Assistant is not receiving data from the MQTT broker.
+    *   Use the `mqtt_viewer.py` script to confirm data is being published.
+    *   Double-check your Home Assistant MQTT integration configuration. Ensure the broker IP address is correct and there are no firewall rules blocking port 1883.
