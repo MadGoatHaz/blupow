@@ -96,7 +96,7 @@ echo ""
 
 # --- Phase 3: Build and Launch BluPow Gateway ---
 echo "🚀 Building the BluPow Gateway image... (This may take a few minutes)"
-if ! docker build --no-cache -t blupow-gateway:latest -f ./blupow_addon/Dockerfile .; then
+if ! docker build --no-cache -t blp-gateway:latest -f ./blupow_gateway/Dockerfile ./blupow_gateway; then
     echo "❌ Error: Failed to build the Docker image."
     exit 1
 fi
@@ -112,7 +112,13 @@ fi
 echo "🚀 Launching the BluPow Gateway container..."
 
 # Create a config directory if it doesn't exist to ensure correct permissions
-mkdir -p ./blupow_addon/config
+CONFIG_DIR="$HOME/blupow_config"
+mkdir -p "$CONFIG_DIR"
+if [ ! -f "$CONFIG_DIR/devices.json" ]; then
+    echo "   - Creating default devices.json at $CONFIG_DIR/devices.json"
+    echo '{\n  "devices": []\n}' > "$CONFIG_DIR/devices.json"
+fi
+sudo chown -R "$USER":"$USER" "$CONFIG_DIR"
 
 docker run -d \
     --name blupow-gateway \
@@ -122,7 +128,7 @@ docker run -d \
     -e MQTT_BROKER="$MQTT_CONNECT_HOST" \
     -e MQTT_PORT="1883" \
     -e POLLING_INTERVAL_SECONDS="30" \
-    -v ./blupow_addon/config:/app/config \
+    -v "$CONFIG_DIR":/app/config \
     -v /var/run/dbus:/var/run/dbus \
     -v /run/dbus:/run/dbus:ro \
     blupow-gateway:latest

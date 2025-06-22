@@ -81,7 +81,7 @@ After the installer completes, you need to tell the gateway which devices to con
 ```
 
 *   `mac`: The Bluetooth MAC address of your device.
-*   `device_profile`: The name of the Python file in `blupow_addon/rootfs/app/devices` that matches your device (e.g., `renogy_inverter`).
+*   `device_profile`: The name of the Python file in `blupow_gateway/app/devices` that matches your device (e.g., `renogy_inverter`).
 *   `friendly_name`: A name that will be used in Home Assistant.
 
 4.  **Restart the gateway** for the changes to take effect:

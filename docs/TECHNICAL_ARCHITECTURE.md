@@ -67,7 +67,7 @@ graph TD
 
 The gateway is designed to be easily extensible to support new devices without changing the core gateway code. This is achieved through **Device Profiles**.
 
-*   **Location**: Profiles are Python classes located in the `blupow_addon/rootfs/app/devices` directory.
+*   **Location**: Profiles are Python classes located in the `blupow_gateway/app/devices` directory.
 *   **Structure**: Each profile (e.g., `renogy_inverter.py`) defines a class that inherits from a `BaseDevice` class.
 *   **Function**: The profile contains all the device-specific logic:
     *   The BLE characteristics to read/write to.
