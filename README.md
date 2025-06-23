@@ -13,9 +13,8 @@
 
 [![Project Maintenance][maintenance-shield]][maintenance-url]
 [![GitHub Sponsors][sponsors-shield]][sponsors]
-[![PayPal Donation][paypal-shield]][paypal]
 
-**Professional Home Assistant integration for Renogy BluPow devices.**
+**A professional Home Assistant integration for Renogy devices.**
 
 </div>
 
@@ -25,114 +24,97 @@
 
 ## Key Features
 
--   **Robust Communication**: A dedicated gateway handles all Bluetooth communication, avoiding common stability issues with direct hardware access from Home Assistant.
--   **Simple Setup**: A guided installer script handles all the complex setup for you. The recommended **Quick Install** option automatically deploys a managed, containerized Mosquitto MQTT broker, making the entire system self-contained.
--   **MQTT Discovery**: Uses Home Assistant's native MQTT discovery for seamless entity creation.
--   **Extensible**: Easily add support for new devices by creating a new device profile.
+-   **Robust Communication**: A dedicated gateway handles all Bluetooth Low Energy (BLE) communication, providing a stable and reliable connection to your devices.
+-   **Modern Architecture**: The gateway is a standalone Docker container that communicates with Home Assistant via MQTT, ensuring HA stability.
+-   **MQTT Discovery**: Uses Home Assistant's native MQTT discovery for seamless and automatic entity creation.
+-   **UI-Driven Configuration**: Add and remove your Renogy devices directly from the Home Assistant UI. No more manual YAML or JSON file editing!
+-   **Extensible**: The driver-based architecture makes it easy to add support for new Modbus-over-BLE devices.
 -   **Supports**:
-    -   Renogy Inverters (e.g., RIV1230RCH-SPS)
-    -   Renogy Charge Controllers (e.g., RNG-CTRL-RVR40)
-
----
-
-## Quick Start Installation
-
-The new architecture requires Docker. The installer script automates the entire setup.
-
-1.  **Prerequisites**:
-    *   Docker and Docker Compose must be installed on your system.
-    *   Your user must have permission to run `docker` commands.
-    *   A working Bluetooth adapter on the host machine.
-
-2.  **Clone the Repository**:
-    ```bash
-    git clone https://github.com/MadGoatHaz/blupow.git
-    cd blupow
-    ```
-
-3.  **Run the Installer**:
-    The interactive installer will guide you through the process. It can automatically create a dedicated, managed MQTT broker for you, which is the recommended approach.
-    ```bash
-    ./scripts/install.sh
-    ```
-    Follow the prompts. Choose **Option 1 (Quick Install)** unless you are an advanced user with a specific need to use your own existing MQTT broker.
-
-4.  **Configure Your Device**:
-    *   After installation, edit the `~/blupow_config/devices.json` file.
-    *   Add your device's MAC address and profile (e.g., `renogy_inverter`).
-    *   Restart the gateway: `docker restart blupow-gateway`
-
-5.  **Add the Integration in Home Assistant**:
-    *   First, ensure Home Assistant's MQTT Integration is configured to connect to the `blupow-mosquitto` broker (using the host's IP).
-    *   Then, go to **Settings > Devices & Services**.
-    *   Click **+ Add Integration** and search for **BluPow**.
+    -   Renogy Charge Controllers (e.g., Rover series)
+    -   Renogy Inverters
+    -   Can be extended to other generic Modbus devices.
 
 ---
 
 ## How It Works
 
-This project's architecture ensures stability by isolating the Bluetooth communication from Home Assistant. It consists of three containerized components working together:
+This integration uses a modern, decoupled architecture to ensure stability and performance. It consists of two main parts:
 
-1.  **The Gateway (`blupow-gateway`)**: A standalone Docker container that connects directly to your Renogy devices via Bluetooth. It polls for data and publishes it to the MQTT broker.
-2.  **The MQTT Broker (`blupow-mosquitto`)**: A containerized Mosquitto broker, automatically configured and managed by the `install.sh` script. It acts as the central message bus.
-3.  **The Home Assistant Integration (`custom_components/blupow`)**: The integration itself, which runs inside Home Assistant. It listens to the MQTT broker for data from the gateway and creates the corresponding sensors.
+1.  **The BluPow Gateway (`blupow_gateway`)**: A Python application, designed to be run as a Docker container. It connects directly to your Renogy devices via Bluetooth, polls them for data, and publishes the data to an MQTT broker. It also listens for commands from Home Assistant (e.g., to add/remove devices).
+2.  **The Home Assistant Integration (`custom_components/blupow`)**: A lightweight "branding" integration that runs inside Home Assistant. It provides the UI configuration flow for adding devices and relies on MQTT Discovery to automatically create all the sensors.
 
-These components communicate over a dedicated Docker network (`blupow-net`), ensuring reliable and isolated message passing.
+This separation means that the often-unstable Bluetooth communication is handled outside of Home Assistant, preventing integration crashes from impacting your HA instance.
+
+---
+
+## Installation & Setup
+
+Setup requires a running MQTT broker and Docker.
+
+1.  **Prerequisites**:
+    *   An MQTT Broker (like the official Mosquitto addon) must be installed and running in Home Assistant.
+    *   Docker and Docker Compose must be installed on a machine that has a working Bluetooth adapter and is within range of your Renogy devices. This can be the same machine as Home Assistant OS.
+
+2.  **Run the Gateway**:
+    *   Clone this repository to the machine that will run the gateway.
+    *   Navigate to the `blupow_gateway` directory.
+    *   Create a `.env` file and configure your `MQTT_BROKER` IP address and credentials.
+    *   Run the gateway using Docker Compose:
+        ```bash
+        docker compose up -d --build
+        ```
+
+3.  **Add the Integration in Home Assistant**:
+    *   Copy the `custom_components/blupow` directory into your Home Assistant `custom_components` folder.
+    *   Restart Home Assistant.
+    *   Go to **Settings > Devices & Services**.
+    *   Click **+ Add Integration** and search for **BluPow**.
+    *   The integration will be added without any further configuration steps.
+
+4.  **Add Your Devices**:
+    *   Once the BluPow integration is added, click **"Configure"** on the integration card.
+    *   You will be prompted to enter the Bluetooth MAC Address and select the device type for your Renogy device.
+    *   The gateway will then automatically discover and publish the device and its sensors to Home Assistant.
 
 ---
 
 ## Troubleshooting
 
 -   **Sensors are "Unknown"**:
-    *   First, check the gateway logs: `docker logs blupow-gateway`. Look for connection errors or other issues.
-    *   Use an MQTT client to inspect the topics. The `scripts/mqtt_viewer.py` tool is provided for this. Verify that data is being published by the gateway.
--   **Containers not starting?** Run `docker ps -a` to see the status of all containers. Check the logs for the failing container, e.g., `docker logs blupow-mosquitto`.
--   **Device not found?** Ensure your Renogy device is powered on and within Bluetooth range of your Home Assistant machine.
+    *   Check the gateway logs: `docker logs blupow_gateway-gateway-1`. Look for Bluetooth connection errors or other issues.
+    *   Use an MQTT exploration tool (like MQTT Explorer) to connect to your broker. Verify that topics under `homeassistant/sensor/blupow_...` are being created and that `blupow/.../state` topics are receiving data.
+-   **Device not found during polling?** Ensure your Renogy device is powered on and within Bluetooth range of the machine running the gateway.
 
 ---
 
 ## Support
 
 ### Documentation
-- **[Installation Guide](docs/INSTALLATION.md)** - Detailed setup instructions
-- **[Contributing Guide](docs/CONTRIBUTING.md)** - Development and contribution guidelines
-- **[Technical Documentation](docs/TECHNICAL_ARCHITECTURE.md)** - Complete technical reference
+- **[Installation Guide](docs/INSTALLATION.md)** - Detailed setup instructions.
+- **[Project Blueprint](docs/PROJECT_BLUEPRINT.md)** - The architectural vision and development roadmap.
+- **[Contributing Guide](docs/CONTRIBUTING.md)** - Development and contribution guidelines.
 
 ### Getting Help
-- **[GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)** - Bug reports and feature requests
-- **[GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)** - Community support and questions
+- **[GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)** - Bug reports and feature requests.
+- **[GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)** - Community support and questions.
 
 ---
 
-## License & Attribution
+## License & Philosophy
 
-This project is licensed under **GPL-3.0** in compliance with the [renogy-bt](https://github.com/cyrils/renogy-bt) library it's based on.
+This project is licensed under the **MIT License**.
 
-**Based on:** [renogy-bt by Cyril](https://github.com/cyrils/renogy-bt) (GPL-3.0)  
-**Integration by:** [@MadGoatHaz](https://github.com/MadGoatHaz)
-
-### Acknowledgments
-- **[Cyril](https://github.com/cyrils)** for the foundational [renogy-bt](https://github.com/cyrils/renogy-bt) library
-- **Renogy** for creating reliable solar equipment
-- **Home Assistant** community for the platform and ecosystem
-- **Contributors** who help improve this integration
-
----
-
-## Project Philosophy
-
--   **Professionalism**: All contributions, code, and discussions related to this project must maintain a high level of professionalism. We are building a reliable, robust tool for the community, and our conduct should reflect that goal.
--   **Stability First**: The primary goal is to provide a stable, "it-just-works" experience. New features will be carefully considered and tested to avoid compromising the core stability of the integration.
--   **Community Driven**: This project thrives on community contributions, whether it's code, documentation, bug reports, or user support in discussions.
+-   **Stability First**: The primary goal is to provide a stable, "it-just-works" experience.
+-   **Professionalism**: We aim to build a reliable, robust tool for the community.
+-   **Community Driven**: This project thrives on community contributions.
 
 ---
 
 ## Support Development
 
-If this integration has been useful for your solar monitoring setup:
+If this integration is useful for you, please consider showing your support!
 
-- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - Monthly sponsorship
-- **[PayPal Donation](https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD)** - One-time donation
+- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - The best way to support ongoing development.
 
 **Maintainer**: [@MadGoatHaz](https://github.com/MadGoatHaz)
 
@@ -143,10 +125,8 @@ If this integration has been useful for your solar monitoring setup:
 [releases]: https://github.com/MadGoatHaz/blupow/releases
 [commits-shield]: https://img.shields.io/github/commit-activity/y/MadGoatHaz/blupow.svg?style=for-the-badge
 [commits]: https://github.com/MadGoatHaz/blupow/commits/main
-[license-shield]: https://img.shields.io/badge/license-GPL--3.0-blue.svg?style=for-the-badge
+[license-shield]: https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge
 [maintenance-shield]: https://img.shields.io/badge/maintainer-@MadGoatHaz-blue.svg?style=for-the-badge
 [maintenance-url]: https://github.com/MadGoatHaz
 [sponsors-shield]: https://img.shields.io/badge/GitHub-Sponsors-ff69b4.svg?style=for-the-badge
-[sponsors]: https://github.com/sponsors/MadGoatHaz
-[paypal-shield]: https://img.shields.io/badge/PayPal-Donate-blue.svg?style=for-the-badge
-[paypal]: https://www.paypal.com/donate/?business=SYVNJAZPAC23S&no_recurring=0&currency_code=USD 
+[sponsors]: https://github.com/sponsors/MadGoatHaz 

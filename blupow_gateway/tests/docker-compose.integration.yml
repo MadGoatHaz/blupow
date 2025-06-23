@@ -1,0 +1,21 @@
+version: '3.7'
+services:
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    ports:
+      - "1884:1883"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+  
+  gateway:
+    build:
+      context: .. 
+      dockerfile: Dockerfile
+    depends_on:
+      - mosquitto
+    environment:
+      - MQTT_BROKER_HOST=mosquitto
+      - POLLING_INTERVAL_SECONDS=5
+      - CONFIG_FILE_PATH=/app/config/devices.test.json
+    volumes:
+      - ./config:/app/config 

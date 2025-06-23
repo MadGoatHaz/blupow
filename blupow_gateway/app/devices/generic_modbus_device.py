@@ -50,7 +50,7 @@ class GenericModbusDevice(BaseDevice):
         # The 'sensors' list in the config already matches the required format.
         return self.config.get("sensors", [])
 
-    async def get_data(self) -> Optional[Dict[str, Any]]:
+    async def poll(self) -> Optional[Dict[str, Any]]:
         _LOGGER.debug(f"[{self.mac_address}] Starting generic data fetch process.")
         client = None
         try:

@@ -59,22 +59,10 @@ class RenogyController(BaseDevice):
             {"key": "charging_status", "name": "Charging Status", "icon": "mdi:power-plug-battery"},
         ]
 
-    async def get_data(self) -> Optional[Dict[str, Any]]:
+    async def poll(self) -> Optional[Dict[str, Any]]:
         _LOGGER.debug(f"[{self.mac_address}] Starting data fetch process.")
-        client = None
         try:
-            # Note: BleakScanner is used here for consistency with original logic.
-            # In a more advanced implementation, connection management might be centralized.
-            device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
-            if not device:
-                _LOGGER.warning(f"[{self.mac_address}] Device not found during scan.")
-                return None
-
-            client = BleakClient(device, timeout=CONNECTION_TIMEOUT)
-            _LOGGER.info(f"[{self.mac_address}] Attempting to connect...")
-            await client.connect()
-            _LOGGER.info(f"[{self.mac_address}] Connected successfully.")
-
+            client = await self._get_bleak_client()
             await client.start_notify(self.notify_uuid, self._notification_handler)
 
             self._data_buffer.clear()
@@ -84,21 +72,25 @@ class RenogyController(BaseDevice):
                 await client.write_gatt_char(self.write_uuid, command, response=False)
                 await asyncio.wait_for(self._notification_event.wait(), timeout=READ_TIMEOUT)
 
+            # We stop notifications but don't disconnect the client, to allow for caching.
+            await client.stop_notify(self.notify_uuid)
+
             return self._data_buffer
 
         except BleakError as e:
             _LOGGER.error(f"[{self.mac_address}] BleakError during operation: {e}")
+            # On a BLE error, force a disconnect so the next attempt gets a fresh client.
+            await self._disconnect()
             return None
         except asyncio.TimeoutError:
             _LOGGER.warning(f"[{self.mac_address}] Timeout waiting for notification.")
+            # Timeouts may be transient, so we don't force a disconnect here.
             return None
         except Exception as e:
             _LOGGER.error(f"[{self.mac_address}] An unexpected error occurred: {e}", exc_info=True)
+            await self._disconnect()
             return None
-        finally:
-            if client and client.is_connected:
-                await client.disconnect()
-                _LOGGER.info(f"[{self.mac_address}] Disconnected.")
+        # The 'finally' block is removed as we now manage disconnection via the cache timer.
 
     def _notification_handler(self, sender, data: bytearray):
         _LOGGER.debug(f"[{self.mac_address}] Received notification: {data.hex()}")
