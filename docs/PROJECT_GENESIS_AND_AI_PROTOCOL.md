@@ -18,6 +18,24 @@
 
 ---
 
+## 🏛️ **THE THREE PILLARS OF DEVELOPMENT: A MANDATORY STRATEGIC WORKFLOW**
+
+This project adheres to a strict, high-level workflow to ensure quality, prevent regressions, and maintain a clean, understandable codebase. These are not suggestions; they are core requirements for all significant changes.
+
+### **Pillar 1: Documentation First**
+-   **The Rule**: Before a major refactor or the addition of a new feature, the relevant public-facing documentation (`README.md`) and technical guides (`IMPLEMENTATION_GUIDE.md`, `CONTRIBUTING.md`, etc.) **must be updated first**.
+-   **The Rationale**: This methodology forces a clear, well-defined plan. The documentation becomes the contract and the definition of "done." The code is then written or refactored to fulfill this contract. This prevents scope creep and guarantees that documentation is never an afterthought, but rather the blueprint that guides the work.
+
+### **Pillar 2: Refactor, then Enhance**
+-   **The Rule**: You shall not add new features to unstable, poorly understood, or undocumented code. If a module is a known source of bugs or lacks clarity, it **must be refactored, stabilized, and documented first** before any new functionality is built upon it.
+-   **The Rationale**: Building on a shaky foundation multiplies technical debt and guarantees future failures. We must stabilize and fully comprehend a component *before* we attempt to extend it. This prevents the "house of cards" effect where one change causes cascading, unrelated problems.
+
+### **Pillar 3: Clean as You Go**
+-   **The Rule**: When a piece of code, a script, a test, or a document is made obsolete by a refactor, it **must be removed** as part of the same commit or pull request. There is no "we'll clean it up later."
+-   **The Rationale**: Dead code and stale documentation are not harmless artifacts; they are liabilities. They mislead future developers, create confusion, and pollute the codebase, making it harder to navigate and trust. Removing them immediately is a mandatory part of completing the work.
+
+---
+
 ## 📖 TABLE OF CRITICAL FAILURES
 
 This section documents key failures from past sessions. Understanding them is critical to avoiding repetition.

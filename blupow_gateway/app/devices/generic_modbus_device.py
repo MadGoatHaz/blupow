@@ -5,6 +5,7 @@ from functools import partial
 
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
+from bleak.backends.device import BLEDevice
 
 from .base import BaseDevice
 from ..utils import _calculate_crc, _bytes_to_int
@@ -21,8 +22,8 @@ class GenericModbusDevice(BaseDevice):
     This driver expects a 'config' block in the device's configuration.
     """
 
-    def __init__(self, address: str, device_type: str, config: Dict[str, Any]):
-        super().__init__(address, device_type)
+    def __init__(self, address: str, device_type: str, config: Dict[str, Any], ble_device: Optional[BLEDevice] = None):
+        super().__init__(address, device_type, ble_device)
         
         # Validate and store configuration
         if not self._validate_config(config):
@@ -47,31 +48,25 @@ class GenericModbusDevice(BaseDevice):
 
     def get_sensor_definitions(self) -> List[Dict[str, Any]]:
         """Return the sensor definitions for this device."""
-        return self.sensors
+        return self.config.get("sensors", [])
 
     async def test_connection(self) -> bool:
         """Test the BLE connection to the device."""
         _LOGGER.info(f"Testing connection to Generic Modbus Device at {self.mac_address}")
-        try:
-            async with BleakClient(self.mac_address, timeout=10.0) as client:
-                is_connected = await client.is_connected()
-                _LOGGER.info(f"Connection test result for {self.mac_address}: {is_connected}")
-                return is_connected
-        except BleakError as e:
-            _LOGGER.error(f"Connection test failed for {self.mac_address}: {e}")
-            return False
+        is_connected = await self.connect()
+        if is_connected:
+            await self.disconnect()
+        return is_connected
 
     async def poll(self) -> Optional[Dict[str, Any]]:
         _LOGGER.debug(f"[{self.mac_address}] Starting generic data fetch process.")
-        client = None
-        try:
-            device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
-            if not device:
-                _LOGGER.warning(f"[{self.mac_address}] Device not found during scan.")
-                return None
+        if not await self.connect():
+            _LOGGER.error(f"[{self.mac_address}] Could not connect for polling.")
+            return None
 
-            client = BleakClient(device, timeout=CONNECTION_TIMEOUT)
-            await client.connect()
+        try:
+            assert self._client is not None
+            client = self._client
             
             self._data_buffer.clear()
             # For this generic driver, we read one register at a time per sensor definition
@@ -100,15 +95,14 @@ class GenericModbusDevice(BaseDevice):
 
             return self._data_buffer
 
-        except (BleakError, asyncio.TimeoutError) as e:
+        except (BleakError) as e:
             _LOGGER.error(f"[{self.mac_address}] Connection or Bleak-level error: {e}")
             return None
         except Exception as e:
             _LOGGER.error(f"[{self.mac_address}] An unexpected error occurred: {e}", exc_info=True)
             return None
         finally:
-            if client and client.is_connected:
-                await client.disconnect()
+            await self.disconnect()
 
     def _notification_handler(self, sender, data: bytearray, sensor_def: Dict[str, Any]):
         """Handle incoming notifications and parse them based on a specific sensor definition."""

@@ -1,13 +1,167 @@
 # 🛠️ **IMPLEMENTATION GUIDE**
 
-**BluPow Subprocess Coordinator Pattern**  
-**For Home Assistant Integration Developers**  
+**BluPow Gateway for Home Assistant**
 
 ---
 
 ## 🎯 **OVERVIEW**
 
-This guide provides step-by-step instructions for implementing the subprocess-based coordinator pattern that solved the BluPow Bluetooth integration challenges. This pattern can be adapted for other complex device integrations.
+This guide provides a technical walkthrough of the BluPow Gateway, a standalone service that acts as a bridge between Bluetooth Low Energy (BLE) BluPow devices and a Home Assistant instance. The gateway connects to devices, polls them for data, and publishes the results to an MQTT broker, which Home Assistant then consumes.
+
+This decoupled architecture was chosen for its stability, scalability, and robustness, overcoming the challenges of direct Bluetooth integrations within Home Assistant.
+
+---
+
+## 🏗️ **ARCHITECTURE**
+
+The gateway operates as a single, standalone Docker container and is logically divided into three primary modules, promoting a clean separation of concerns.
+
+```mermaid
+graph TD;
+    subgraph BluPow Gateway Container;
+        direction LR;
+        
+        main[main.py<br/><i>App Lifecycle</i>] -->|creates & uses| DeviceManager;
+        main -->|creates & uses| MqttHandler;
+        
+        subgraph MqttHandler [mqtt_handler.py<br/><i>MQTT Communication</i>];
+            direction TB;
+            A[Handles MQTT Connection];
+            B[Receives Commands<br/>(add, remove, discover)];
+            C[Publishes Sensor Data];
+            D[Publishes HA Discovery];
+        end
+        
+        subgraph DeviceManager [device_manager.py<br/><i>Device State & Logic</i>];
+            direction TB;
+            E[Manages Device Dictionary];
+            F[Manages BLE Device Cache];
+            G[Handles BLE Polling Loops];
+            H[Saves/Loads Device Config];
+        end
+
+        MqttHandler -->|delegates commands to| DeviceManager;
+    end
+
+    HomeAssistant[Home Assistant] <-->|MQTT Broker| MqttHandler;
+    DeviceManager <-->|BLE| BluPowDevices[BluPow Devices];
+
+    style main fill:#d4edda,stroke:#155724
+    style MqttHandler fill:#cce5ff,stroke:#004085
+    style DeviceManager fill:#fff3cd,stroke:#856404
+```
+
+### **1. `main.py` - Application Orchestrator**
+
+This is the main entry point for the gateway. Its sole responsibility is to manage the application's lifecycle.
+
+- **Initializes** the `DeviceManager` and `MqttHandler`.
+- **Orchestrates** the startup sequence:
+    1.  Creates the manager and handler instances.
+    2.  Loads saved device configurations from disk.
+    3.  Connects to the MQTT broker.
+    4.  Starts the polling loops for all loaded devices.
+- **Manages** the graceful shutdown sequence, ensuring all connections are closed and tasks are cancelled properly.
+
+### **2. `device_manager.py` - Device Logic and State**
+
+This module is the brain of the gateway, handling all state and direct interaction with BLE devices.
+
+- **`DeviceManager` Class**: A singleton class that holds the state of all devices.
+    - **Device Cache**: Maintains a dictionary of all active `BaseDevice` objects.
+    - **Polling Tasks**: Manages the lifecycle of the asynchronous polling tasks for each device.
+    - **Discovery Cache**: Stores the results of the last BLE scan to enable fast device adding without requiring a second scan.
+    - **Configuration**: Handles loading and saving the `devices.json` configuration file.
+    - **BLE Lock**: Contains a critical `asyncio.Lock` to ensure that all BLE operations (discovery, adding, polling) are executed sequentially to prevent conflicts at the hardware level.
+- **`create_device` (Static Method)**: A factory function that, given a device type and address, returns the correct instantiated device driver object (e.g., `RenogyController`).
+
+### **3. `mqtt_handler.py` - MQTT Communication**
+
+This module isolates all logic related to the MQTT protocol. It acts as the gateway's external communication interface.
+
+- **`MqttHandler` Class**:
+    - **Connection Management**: Handles connecting, disconnecting, and automatically reconnecting to the MQTT broker.
+    - **Command Handling**: Subscribes to the `blupow/gateway/command` topic and processes incoming JSON-formatted commands (`get_devices`, `discover_devices`, `add_device`, `remove_device`, `restart_gateway`).
+    - **Delegation**: Does not implement business logic itself. Instead, it delegates the actions to the `DeviceManager` instance it holds. For example, on receiving an `add_device` command, it calls `device_manager.add_device()`.
+    - **State & Discovery Publishing**: Provides methods for publishing sensor data and Home Assistant discovery payloads. These are called by the `DeviceManager` via a callback, maintaining the separation of concerns.
+
+### **4. `devices/` - Device Drivers**
+
+This directory contains the specific drivers for each supported piece of hardware.
+
+- **`base.py`**: Defines the `BaseDevice` abstract base class, which all specific device drivers must inherit. It enforces the implementation of methods like `poll()` and `get_sensor_definitions()`.
+- **`renogy_controller.py` / `renogy_inverter.py`**: Concrete implementations for specific Renogy products.
+- **`generic_modbus_device.py`**: A flexible driver that can be configured via JSON for any Modbus-over-BLE device, allowing for easy expansion without writing new Python code.
+
+---
+
+## 💡 **DESIGN PHILOSOPHY**
+
+The gateway's architecture is guided by three core principles:
+
+1.  **Stability via Decoupling**: All direct device interaction (especially unstable Bluetooth operations) is handled in a separate process from Home Assistant. If the gateway encounters a fatal error with a device, it can restart without affecting Home Assistant's stability.
+2.  **Maintainability via Modularity**: By separating responsibilities into `DeviceManager` (state), `MqttHandler` (communication), and `main` (lifecycle), the codebase is easier to understand, test, and extend. Adding a new feature doesn't require rewriting the entire application.
+3.  **Resiliency via Statefulness**: The gateway is designed to be resilient to restarts and failures.
+    -   **Configuration on Disk**: The list of added devices is saved to `devices.json`, so the gateway automatically restores its state after a restart.
+    -   **BLE Discovery Cache**: The `DeviceManager` caches the results of a discovery scan. This allows the `add_device` command to be nearly instantaneous and robust against race conditions where a device might stop advertising between discovery and addition.
+
+---
+
+## 🔧 **OPERATIONAL FLOW**
+
+### **Startup Sequence**
+1.  `main.py` starts.
+2.  `DeviceManager` and `MqttHandler` are instantiated.
+3.  `DeviceManager` loads `devices.json` into its `devices` dictionary.
+4.  `MqttHandler` connects to the MQTT broker.
+5.  On successful connection, `MqttHandler._on_connect` is triggered. It iterates through all devices in the `DeviceManager` and publishes their Home Assistant discovery configs.
+6.  `main.py` iterates through the loaded devices and starts a dedicated polling task for each one via `DeviceManager.start_polling_device()`.
+
+### **Add Device Flow**
+1.  A user triggers a discovery action in the Home Assistant UI.
+2.  Home Assistant publishes a `discover_devices` command to the `blupow/gateway/command` topic.
+3.  `MqttHandler` receives the command and calls `device_manager.discover_devices()`.
+4.  `DeviceManager` performs a `BleakScanner.discover()` and stores the results in its `discovered_device_cache`. It returns a list of newly found devices.
+5.  The user selects a device to add in the UI.
+6.  Home Assistant publishes an `add_device` command with the device address and type.
+7.  `MqttHandler` receives the command and calls `device_manager.add_device()`.
+8.  `DeviceManager` retrieves the `BLEDevice` object from its cache (no second scan needed), creates a new driver instance, tests the connection, and if successful, adds it to the active `devices` dictionary, saves the config, and starts the polling loop.
+9.  A success response is sent back to Home Assistant.
+
+---
+
+## 🗺️ **ARCHITECTURAL ROADMAP**
+
+The modular architecture provides a strong foundation for future enhancements.
+
+| Status | Feature | Description |
+| :--- | :--- | :--- |
+| ✅ **Working** | **Decoupled Gateway Architecture** | A standalone Docker container handles all BLE communication, ensuring HA stability. |
+| ✅ **Working** | **MQTT Communication** | Uses the industry-standard MQTT protocol for robust and reliable data transfer. |
+| ✅ **Working** | **Home Assistant Discovery** | Automatically discovers and configures new devices and their sensors in HA. |
+| ✅ **Working** | **UI-Driven Device Management** | Add, remove, and list your devices directly from the Home Assistant interface. |
+| ✅ **Working** | **Stateful Device Configuration** | The gateway saves its device list and reloads it on restart. |
+| ✅ **Working** | **BLE Discovery Caching** | Discovered devices are cached to prevent race conditions during the add-device flow. |
+| 🔜 **Planned** | **Advanced Polling Strategies** | Dynamically adjust polling frequency based on device state (e.g., poll faster when charging). |
+| 🔜 **Planned** | **Bluetooth Proxy Integration** | Utilize Home Assistant's Bluetooth proxy capabilities to extend range. |
+
+---
+
+## 🔍 **DEBUGGING THE GATEWAY**
+
+Troubleshooting the gateway involves checking the two main components: the gateway container itself and the MQTT broker.
+
+1.  **Check the Gateway Logs**: This is the most important first step. Use Docker to view the real-time logs of the container.
+    ```bash
+    # From the blupow_gateway/ directory
+    docker compose logs -f
+    ```
+    Look for any error messages related to Bluetooth, MQTT connection, or device polling.
+
+2.  **Inspect MQTT Traffic**: Use a tool like [MQTT Explorer](http://mqtt-explorer.com/) to connect to your broker and visualize the data flow.
+    -   **Check for Commands**: When you perform an action in the HA UI, you should see a message published to the `blupow/gateway/command` topic.
+    -   **Check for State**: You should see data being published by the gateway to `blupow/DEVICE_ADDRESS/state` topics.
+    -   **Check for HA Discovery**: Ensure that the gateway is publishing configuration payloads to topics under `homeassistant/sensor/`. If these are missing, Home Assistant won't create the sensor entities.
 
 ---
 
@@ -38,594 +192,6 @@ docker run --privileged \
   --device /dev/bus/usb \
   -v /run/dbus:/run/dbus:ro \
   homeassistant/home-assistant
-```
-
----
-
-## 🏗️ **ARCHITECTURE COMPONENTS**
-
-### **1. Core Files Structure**
-```
-custom_components/blupow/
-├── __init__.py              # Integration setup
-├── coordinator.py           # Subprocess coordinator
-├── blupow_client.py        # Device client
-├── sensor.py               # Sensor definitions
-├── config_flow.py          # Configuration flow
-├── const.py                # Constants
-└── manifest.json           # Integration manifest
-```
-
-### **2. Key Classes**
-- `BluPowCoordinator`: Main subprocess coordinator
-- `BluPowClient`: Bluetooth device client
-- `BluPowSensor`: Individual sensor entities
-
----
-
-## 🔧 **STEP-BY-STEP IMPLEMENTATION**
-
-### **Step 1: Create the Device Client**
-
-```python
-# blupow_client.py
-import asyncio
-import logging
-from bleak import BleakClient
-from typing import Dict, Any, Optional
-
-_LOGGER = logging.getLogger(__name__)
-
-class BluPowClient:
-    """Bluetooth client for BluPow devices."""
-    
-    def __init__(self, mac_address: str):
-        self.mac_address = mac_address
-        self.client: Optional[BleakClient] = None
-        
-    async def connect(self) -> bool:
-        """Connect to the device."""
-        try:
-            self.client = BleakClient(
-                self.mac_address,
-                timeout=20.0  # Extended timeout
-            )
-            
-            connected = await self.client.connect()
-            if connected:
-                _LOGGER.info(f"Connected to {self.mac_address}")
-                return True
-            else:
-                _LOGGER.error(f"Failed to connect to {self.mac_address}")
-                return False
-                
-        except Exception as e:
-            _LOGGER.error(f"Connection error: {e}")
-            return False
-    
-    async def disconnect(self):
-        """Disconnect from the device."""
-        if self.client and self.client.is_connected:
-            await self.client.disconnect()
-            _LOGGER.info(f"Disconnected from {self.mac_address}")
-    
-    async def read_device_info(self) -> Dict[str, Any]:
-        """Read device information and sensor data."""
-        if not self.client or not self.client.is_connected:
-            raise RuntimeError("Client not connected")
-        
-        data = {}
-        
-        # Read different register sections
-        registers = [
-            (4000, 12, "system_info"),
-            (4109, 20, "battery_data"),
-            (4311, 8, "load_data"),
-            (4327, 4, "temperature_data"),
-            (4408, 8, "inverter_data")
-        ]
-        
-        for start_reg, count, section in registers:
-            try:
-                section_data = await self._read_registers(start_reg, count)
-                data.update(section_data)
-            except Exception as e:
-                _LOGGER.warning(f"Failed to read {section}: {e}")
-        
-        return data
-    
-    async def _read_registers(self, start_register: int, count: int) -> Dict[str, Any]:
-        """Read Modbus registers via Bluetooth."""
-        # Construct Modbus RTU command
-        command = self._build_modbus_command(start_register, count)
-        
-        # Send command and read response
-        await self.client.write_gatt_char(
-            "0000fff2-0000-1000-8000-00805f9b34fb",  # Write characteristic
-            command
-        )
-        
-        # Read response
-        response = await self.client.read_gatt_char(
-            "0000fff1-0000-1000-8000-00805f9b34fb"   # Read characteristic
-        )
-        
-        # Parse response
-        return self._parse_modbus_response(response, start_register)
-    
-    def _build_modbus_command(self, start_register: int, count: int) -> bytes:
-        """Build Modbus RTU command."""
-        # Device ID + Function Code + Register + Count + CRC
-        command = bytearray([
-            0xFF,  # Device ID
-            0x03,  # Read Holding Registers
-            (start_register >> 8) & 0xFF,  # Start register high
-            start_register & 0xFF,         # Start register low
-            (count >> 8) & 0xFF,          # Count high
-            count & 0xFF                  # Count low
-        ])
-        
-        # Add CRC
-        crc = self._calculate_crc(command)
-        command.extend(crc.to_bytes(2, 'little'))
-        
-        return bytes(command)
-    
-    def _parse_modbus_response(self, response: bytes, start_register: int) -> Dict[str, Any]:
-        """Parse Modbus response into sensor data."""
-        if len(response) < 5:
-            return {}
-        
-        # Skip header bytes (Device ID, Function Code, Data Length)
-        # CRITICAL: Start from byte 3, not byte 2
-        data_start = 3
-        data = {}
-        
-        # Parse based on register range
-        if start_register == 4000:
-            # System information
-            data.update(self._parse_system_info(response[data_start:]))
-        elif start_register == 4109:
-            # Battery data
-            data.update(self._parse_battery_data(response[data_start:]))
-        # ... other register ranges
-        
-        return data
-    
-    def _parse_system_info(self, data: bytes) -> Dict[str, Any]:
-        """Parse system information registers."""
-        if len(data) < 24:
-            return {}
-        
-        return {
-            'model': self._decode_string(data[0:16]),
-            'firmware_version': f"{data[16]}.{data[17]}",
-            'serial_number': int.from_bytes(data[18:22], 'big'),
-            'rated_power': int.from_bytes(data[22:24], 'big')
-        }
-    
-    def _calculate_crc(self, data: bytearray) -> int:
-        """Calculate Modbus CRC."""
-        crc = 0xFFFF
-        for byte in data:
-            crc ^= byte
-            for _ in range(8):
-                if crc & 1:
-                    crc = (crc >> 1) ^ 0xA001
-                else:
-                    crc >>= 1
-        return crc
-```
-
-### **Step 2: Create the Subprocess Coordinator**
-
-```python
-# coordinator.py
-import asyncio
-import logging
-from datetime import timedelta
-from typing import Dict, Any
-
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-
-_LOGGER = logging.getLogger(__name__)
-
-class BluPowCoordinator(DataUpdateCoordinator):
-    """Subprocess-based coordinator for BluPow integration."""
-    
-    def __init__(self, hass: HomeAssistant, mac_address: str):
-        """Initialize the coordinator."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            name="BluPow",
-            update_interval=timedelta(seconds=30),
-        )
-        self.mac_address = mac_address
-        self._last_successful_data = {}
-    
-    async def _async_update_data(self) -> Dict[str, Any]:
-        """Fetch data using subprocess execution."""
-        try:
-            _LOGGER.debug(f"Starting subprocess data fetch for {self.mac_address}")
-            
-            # Generate subprocess script
-            script = self._generate_subprocess_script()
-            
-            # Execute subprocess with timeout
-            process = await asyncio.create_subprocess_exec(
-                'python3', '-c', script,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            try:
-                # Wait for completion with timeout
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(), timeout=20.0
-                )
-                
-                # Parse results
-                output = stdout.decode().strip()
-                error_output = stderr.decode().strip()
-                
-                if error_output:
-                    _LOGGER.debug(f"Subprocess stderr: {error_output}")
-                
-                if output.startswith("SUCCESS:"):
-                    # Parse successful data
-                    data_str = output[8:]  # Remove "SUCCESS:" prefix
-                    data = eval(data_str)  # Safe since we control the format
-                    
-                    if isinstance(data, dict) and len(data) > 0:
-                        _LOGGER.info(f"✅ SUBPROCESS SUCCESS: Retrieved {len(data)} fields")
-                        self._last_successful_data = data
-                        return data
-                    else:
-                        _LOGGER.warning("Subprocess returned empty data")
-                        return self._get_fallback_data()
-                        
-                elif output.startswith("ERROR:"):
-                    error_msg = output[6:]  # Remove "ERROR:" prefix
-                    _LOGGER.error(f"Subprocess reported error: {error_msg}")
-                    return self._get_fallback_data()
-                    
-                else:
-                    _LOGGER.error(f"Unexpected subprocess output: {output}")
-                    return self._get_fallback_data()
-                    
-            except asyncio.TimeoutError:
-                _LOGGER.error("Subprocess timed out after 20 seconds")
-                if process.returncode is None:
-                    process.kill()
-                    await process.wait()
-                return self._get_fallback_data()
-                
-        except Exception as exc:
-            _LOGGER.error(f"Subprocess execution failed: {exc}")
-            return self._get_fallback_data()
-        finally:
-            # Ensure process cleanup
-            if 'process' in locals() and process.returncode is None:
-                process.terminate()
-                await process.wait()
-    
-    def _generate_subprocess_script(self) -> str:
-        """Generate the subprocess execution script."""
-        return f'''
-import asyncio
-import sys
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.ERROR)
-
-# Add custom component path
-sys.path.append("/config/custom_components")
-
-async def get_data():
-    """Main data retrieval function."""
-    try:
-        from blupow.blupow_client import BluPowClient
-        
-        client = BluPowClient("{self.mac_address}")
-        
-        # Attempt connection
-        connected = await client.connect()
-        if not connected:
-            print("ERROR:Connection failed")
-            return False
-        
-        # Read device data
-        data = await client.read_device_info()
-        
-        # Disconnect
-        await client.disconnect()
-        
-        # Validate and return data
-        if data and len(data) > 0:
-            # Convert to JSON-serializable format
-            json_data = {{}}
-            for k, v in data.items():
-                if v is not None:
-                    # Convert complex types to strings
-                    if isinstance(v, (int, float, bool, str)):
-                        json_data[k] = v
-                    else:
-                        json_data[k] = str(v)
-                else:
-                    json_data[k] = None
-            
-            print("SUCCESS:" + str(json_data))
-            return True
-        else:
-            print("ERROR:No data retrieved")
-            return False
-            
-    except ImportError as e:
-        print(f"ERROR:Import failed: {{str(e)}}")
-        return False
-    except Exception as e:
-        print(f"ERROR:{{str(e)}}")
-        return False
-
-# Execute main function
-try:
-    result = asyncio.run(get_data())
-    if not result:
-        sys.exit(1)
-except Exception as e:
-    print(f"ERROR:Execution failed: {{str(e)}}")
-    sys.exit(1)
-'''
-    
-    def _get_fallback_data(self) -> Dict[str, Any]:
-        """Return fallback data when subprocess fails."""
-        if self._last_successful_data:
-            _LOGGER.info("Using last successful data as fallback")
-            # Mark data as offline
-            fallback = self._last_successful_data.copy()
-            fallback['connection_status'] = 'offline'
-            return fallback
-        else:
-            _LOGGER.warning("No fallback data available")
-            return {
-                'connection_status': 'offline',
-                'model': 'Unknown',
-                'input_voltage': None,
-                'battery_voltage': None,
-                'battery_soc': None,
-                'load_power': None,
-                'temperature': None
-            }
-```
-
-### **Step 3: Integration Setup**
-
-```python
-# __init__.py
-import logging
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.const import Platform
-
-from .coordinator import BluPowCoordinator
-from .const import DOMAIN
-
-_LOGGER = logging.getLogger(__name__)
-
-PLATFORMS = [Platform.SENSOR]
-
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up BluPow from a config entry."""
-    
-    # Get MAC address from config
-    mac_address = entry.data["mac_address"]
-    
-    # Create coordinator
-    coordinator = BluPowCoordinator(hass, mac_address)
-    
-    # Perform initial data fetch
-    await coordinator.async_config_entry_first_refresh()
-    
-    # Store coordinator
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
-    
-    # Setup platforms
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    
-    return True
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-    
-    return unload_ok
-```
-
-### **Step 4: Sensor Definitions**
-
-```python
-# sensor.py
-from homeassistant.components.sensor import (
-    SensorEntity,
-    SensorDeviceClass,
-    SensorStateClass,
-)
-from homeassistant.const import (
-    UnitOfElectricCurrent,
-    UnitOfElectricPotential,
-    UnitOfPower,
-    UnitOfTemperature,
-    PERCENTAGE,
-)
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
-
-from .const import DOMAIN
-
-SENSOR_TYPES = {
-    "input_voltage": {
-        "name": "Input Voltage",
-        "device_class": SensorDeviceClass.VOLTAGE,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "unit": UnitOfElectricPotential.VOLT,
-        "icon": "mdi:flash",
-    },
-    "battery_voltage": {
-        "name": "Battery Voltage", 
-        "device_class": SensorDeviceClass.VOLTAGE,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "unit": UnitOfElectricPotential.VOLT,
-        "icon": "mdi:battery",
-    },
-    "battery_soc": {
-        "name": "Battery SOC",
-        "device_class": SensorDeviceClass.BATTERY,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "unit": PERCENTAGE,
-        "icon": "mdi:battery-charging",
-    },
-    "load_power": {
-        "name": "Load Power",
-        "device_class": SensorDeviceClass.POWER,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "unit": UnitOfPower.WATT,
-        "icon": "mdi:lightning-bolt",
-    },
-    "temperature": {
-        "name": "Temperature",
-        "device_class": SensorDeviceClass.TEMPERATURE,
-        "state_class": SensorStateClass.MEASUREMENT,
-        "unit": UnitOfTemperature.CELSIUS,
-        "icon": "mdi:thermometer",
-    },
-}
-
-async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up BluPow sensors."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
-    
-    entities = []
-    for sensor_type in SENSOR_TYPES:
-        entities.append(BluPowSensor(coordinator, sensor_type))
-    
-    async_add_entities(entities, True)
-
-class BluPowSensor(CoordinatorEntity, SensorEntity):
-    """BluPow sensor entity."""
-    
-    def __init__(self, coordinator, sensor_type):
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        self.sensor_type = sensor_type
-        self._attr_name = f"BluPow {SENSOR_TYPES[sensor_type]['name']}"
-        self._attr_unique_id = f"blupow_{coordinator.mac_address}_{sensor_type}"
-        
-        # Set sensor properties
-        sensor_config = SENSOR_TYPES[sensor_type]
-        self._attr_device_class = sensor_config.get("device_class")
-        self._attr_state_class = sensor_config.get("state_class")
-        self._attr_native_unit_of_measurement = sensor_config.get("unit")
-        self._attr_icon = sensor_config.get("icon")
-    
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        if self.coordinator.data:
-            return self.coordinator.data.get(self.sensor_type)
-        return None
-    
-    @property
-    def available(self):
-        """Return if entity is available."""
-        return (
-            self.coordinator.last_update_success 
-            and self.coordinator.data 
-            and self.coordinator.data.get('connection_status') != 'offline'
-        )
-```
-
----
-
-## 🔍 **DEBUGGING AND TROUBLESHOOTING**
-
-### **Common Issues**
-
-#### **1. Import Errors in Subprocess**
-```python
-# Problem: Module not found in subprocess
-# Solution: Verify sys.path addition
-sys.path.append("/config/custom_components")
-
-# Debug: Add path verification
-import sys
-print(f"Python path: {sys.path}")
-```
-
-#### **2. Subprocess Timeout**
-```python
-# Problem: Subprocess hangs
-# Solution: Increase timeout and add debug logging
-try:
-    stdout, stderr = await asyncio.wait_for(
-        process.communicate(), timeout=30.0  # Increased timeout
-    )
-except asyncio.TimeoutError:
-    _LOGGER.error("Subprocess timeout - check Bluetooth connectivity")
-```
-
-#### **3. Data Parsing Errors**
-```python
-# Problem: eval() fails on subprocess output
-# Solution: Add validation
-try:
-    data = eval(data_str)
-    if not isinstance(data, dict):
-        raise ValueError("Invalid data format")
-except (SyntaxError, ValueError) as e:
-    _LOGGER.error(f"Data parsing failed: {e}")
-    return fallback_data()
-```
-
-### **Debug Logging Setup**
-
-```python
-# Enable debug logging in configuration.yaml
-logger:
-  default: info
-  logs:
-    custom_components.blupow: debug
-    custom_components.blupow.coordinator: debug
-    custom_components.blupow.blupow_client: debug
-```
-
-### **Testing Commands**
-
-```bash
-# Test subprocess execution manually
-python3 -c "
-import asyncio
-import sys
-sys.path.append('/config/custom_components')
-
-async def test():
-    from blupow.blupow_client import BluPowClient
-    client = BluPowClient('D8:B6:73:BF:4F:75')
-    connected = await client.connect()
-    if connected:
-        data = await client.read_device_info()
-        await client.disconnect()
-        print(f'SUCCESS: {data}')
-    else:
-        print('ERROR: Connection failed')
-
-asyncio.run(test())
-"
 ```
 
 ---

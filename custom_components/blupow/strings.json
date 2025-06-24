@@ -53,8 +53,7 @@
         "title": "Manage BluPow Devices",
         "menu_options": {
           "discover_devices": "Discover and Add a New Device",
-          "add_device_manually": "Add a Device Manually",
-          "remove_device": "Remove a Device"
+          "manage_devices": "Manage Existing Devices"
         }
       },
       "select_discovered_device": {
@@ -63,13 +62,17 @@
           "selected_device": "Device"
         }
       },
-      "add_device_manually": {
-        "title": "Add Device Manually",
-        "description": "Enter the details for your device.",
+      "set_device_type": {
+        "title": "Select Device Type",
+        "description": "Please select the correct type for the device: {device_name}",
         "data": {
-          "name": "Name",
-          "address": "Bluetooth MAC Address",
-          "type": "Device Type"
+          "device_type": "Device Type"
+        }
+      },
+      "manage_devices": {
+        "title": "Remove Configured Devices",
+        "data": {
+          "devices_to_remove": "Select devices to remove"
         }
       }
     },
@@ -81,9 +84,9 @@
       "discovery_timeout": "Timed out waiting for a response from the BluPow gateway.",
       "discovery_failed": "An unexpected error occurred during discovery.",
       "device_not_found": "The selected device could not be found.",
-      "add_device_timeout": "Timed out waiting for a response from the BluPow gateway.",
-      "add_device_failed": "The gateway failed to add the device.",
-      "not_implemented": "This feature is not yet implemented."
+      "add_device_failed": "The gateway failed to add the device. Check gateway logs for more details.",
+      "get_devices_failed": "Failed to retrieve the list of configured devices from the gateway.",
+      "no_devices_configured": "There are currently no devices configured in the gateway."
     }
   }
 }

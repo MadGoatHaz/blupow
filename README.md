@@ -14,7 +14,7 @@
 [![Project Maintenance][maintenance-shield]][maintenance-url]
 [![GitHub Sponsors][sponsors-shield]][sponsors]
 
-**A professional Home Assistant integration for bringing BLE devices into your smart home.**
+**A professional, stable, and extensible gateway to bring your Bluetooth Low Energy (BLE) devices into Home Assistant.**
 
 </div>
 
@@ -22,60 +22,107 @@
 <img src="BluPow.png" alt="BluPow Integration" width="300"/>
 </div>
 
-## Key Features
+## 🎯 **Project Goals**
 
--   **Universal BLE Support**: A dedicated gateway handles all Bluetooth Low Energy (BLE) communication, providing a stable and reliable connection to your devices.
--   **Modern, Decoupled Architecture**: The gateway is a standalone Docker container that communicates with Home Assistant via MQTT, ensuring HA stability is never compromised by Bluetooth issues.
--   **MQTT Discovery**: Uses Home Assistant's native MQTT discovery for seamless and automatic entity creation.
--   **UI-Driven Configuration**: Add and remove your BLE devices directly from the Home Assistant UI.
--   **Extensible by Design**: The driver-based architecture makes it easy to add support for new Modbus-over-BLE devices or other Bluetooth peripherals.
--   **Currently Supported**:
-    -   Renogy Charge Controllers (e.g., Rover series)
-    -   Renogy Inverters
-    -   Can be extended to other generic Modbus and BLE devices.
+This project provides a rock-solid bridge between the world of Bluetooth Low Energy (BLE) devices and your Home Assistant instance. It is built on three core principles:
+
+1.  **Stability**: All Bluetooth communication is handled by a standalone gateway, completely decoupled from the Home Assistant process. Bluetooth instability will *never* crash your smart home.
+2.  **Extensibility**: The driver-based architecture is designed for easy expansion. Adding support for new BLE devices is straightforward and doesn't require changing the core gateway logic.
+3.  **Usability**: The entire experience, from initial device discovery to adding and removing devices, is managed through a clean, simple Home Assistant UI.
 
 ---
 
-## How It Works
+## ✨ **Features: Current & Future**
+
+| Status | Feature | Description |
+| :--- | :--- | :--- |
+| ✅ **Working** | **Decoupled Gateway Architecture** | A standalone Docker container handles all BLE communication, ensuring HA stability. |
+| ✅ **Working** | **MQTT Communication** | Uses the industry-standard MQTT protocol for robust and reliable data transfer. |
+| ✅ **Working** | **Home Assistant Discovery** | Automatically discovers and configures new devices and their sensors in HA. |
+| ✅ **Working** | **UI-Driven Device Management** | Add, remove, and list your devices directly from the Home Assistant interface. |
+| ✅ **Working** | **Renogy Device Support** | Out-of-the-box support for popular Renogy Inverters and Solar Controllers. |
+| ✅ **Working** | **Generic Modbus Support** | A configurable driver allows for adding any Modbus-over-BLE device without new code. |
+| 🔜 **Planned** | **Dynamic Driver Loading** | Add support for new devices by simply dropping a new driver file into a directory, no code changes needed. |
+| 🔜 **Planned** | **Bluetooth Proxy Integration** | Utilize Home Assistant's Bluetooth proxy capabilities to extend range and eliminate the need for a dedicated BLE adapter on the gateway host. |
+| 🔜 **Planned** | **Advertisement-based Sensors** | Add support for simple, connectionless BLE sensors (e.g., temperature/humidity) that broadcast their state. |
+
+---
+
+## 🏗️ **Architectural Overview**
 
 This integration uses a modern, decoupled architecture to ensure stability and performance. It consists of two main parts:
 
-1.  **The BluPow Gateway (`blupow_gateway`)**: A Python application, designed to be run as a Docker container. It connects directly to your Bluetooth devices, polls them for data, and publishes the data to an MQTT broker. It also listens for commands from Home Assistant (e.g., to add/remove devices).
-2.  **The Home Assistant Integration (`custom_components/blupow`)**: A lightweight "branding" integration that runs inside Home Assistant. It provides the UI configuration flow for discovering and adding devices, and relies on MQTT Discovery to automatically create all the sensors.
+<div align="center">
 
-This separation means that potentially unstable Bluetooth communication is handled outside of Home Assistant, preventing integration crashes from impacting your HA instance.
+```mermaid
+graph TD;
+    subgraph Host Machine
+        direction LR
+        subgraph Docker
+            Gateway[BluPow Gateway]
+        end
+    end
+
+    subgraph Home Assistant OS or Server
+        direction LR
+        MQTT[MQTT Broker]
+        HA[Home Assistant Core]
+    end
+
+    subgraph BLE Devices
+        direction TB
+        Device1[Renogy Inverter]
+        Device2[Solar Controller]
+        Device3[...]
+    end
+    
+    Gateway <-->|Bluetooth| Device1;
+    Gateway <-->|Bluetooth| Device2;
+    Gateway <-->|Bluetooth| Device3;
+
+    Gateway <-->|MQTT| MQTT;
+    HA <-->|MQTT| MQTT;
+    HA -- Manages --> UIMgmt;
+    UIMgmt[UI Device<br/>Management] -- Publishes Commands --> MQTT
+```
+</div>
+
+1.  **The BluPow Gateway (`blupow_gateway`)**: A Python application, designed to be run as a Docker container. It connects directly to your Bluetooth devices, polls them for data, and publishes the data to an MQTT broker.
+2.  **The Home Assistant Integration (`custom_components/blupow`)**: A lightweight component whose only job is to provide the UI for device management. It relies entirely on MQTT for communication and discovery.
+
+This separation means that potentially unstable Bluetooth communication is handled outside of Home Assistant, preventing integration crashes from impacting your core smart home system.
 
 ---
 
-## Installation & Setup
+## 🚀 **Installation & Setup**
 
-Setup requires a running MQTT broker and Docker.
+Setup requires a running MQTT broker and Docker. For the most straightforward setup, follow the **[Quick Start Guide](docs/QUICK_START.md)**.
 
-1.  **Prerequisites**:
-    *   An MQTT Broker (like the official Mosquitto addon) must be installed and running in Home Assistant.
-    *   Docker and Docker Compose must be installed on a machine that has a working Bluetooth adapter and is within range of your BLE devices. This can be the same machine as Home Assistant OS.
+---
 
-2.  **Run the Gateway**:
-    *   Clone this repository to the machine that will run the gateway.
-    *   Navigate to the `blupow_gateway` directory.
-    *   Create a `.env` file and configure your `MQTT_BROKER` IP address and credentials.
-    *   Run the gateway using Docker Compose:
-        ```bash
-        docker compose up -d --build
-        ```
+## 🤝 **Contributing & Support**
 
-3.  **Add the Integration in Home Assistant**:
-    *   Copy the `custom_components/blupow` directory into your Home Assistant `custom_components` folder.
-    *   Restart Home Assistant.
-    *   Go to **Settings > Devices & Services**.
-    *   Click **+ Add Integration** and search for **BluPow**.
-    *   The integration will be added without any further configuration steps.
+This project thrives on community contributions. Whether it's adding a new device driver, improving the documentation, or reporting a bug, your help is welcome.
 
-4.  **Add Your Devices**:
-    *   Once the BluPow integration is added, click **"Configure"** on the integration card.
-    *   Use the "Discover New Devices" feature. The gateway will scan for nearby, advertisings BLE devices.
-    *   Select your device from the list, provide any necessary details (like the device type), and add it.
-    *   The gateway will then automatically discover and publish the device and its sensors to Home Assistant.
+- **[Contributing Guide](docs/CONTRIBUTING.md)** - Guidelines for development, and how to add support for a new device.
+- **[GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)** - Bug reports and feature requests.
+- **[GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)** - Community support and questions.
+
+---
+
+## 📜 **License**
+
+This project is licensed under the **GNU General Public License v3.0**. Please see the [LICENSE](LICENSE) file for full details.
+
+---
+
+## ❤️ **Support The Project**
+
+If this integration is useful to you, please consider showing your support! Ongoing development requires time and resources.
+
+- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - The best way to support ongoing development with a monthly contribution.
+
+**Maintainer**: [@MadGoatHaz](https://github.com/MadGoatHaz)
 
 ---
 
@@ -88,44 +135,12 @@ Setup requires a running MQTT broker and Docker.
 
 ---
 
-## Support
-
-### Documentation
-- **[Project Genesis and AI Protocol](docs/PROJECT_GENESIS_AND_AI_PROTOCOL.md)** - The single source of truth for architecture, workflow, and AI/developer onboarding. **START HERE.**
-- **[Contributing Guide](docs/CONTRIBUTING.md)** - Development and contribution guidelines.
-
-### Getting Help
-- **[GitHub Issues](https://github.com/MadGoatHaz/blupow/issues)** - Bug reports and feature requests.
-- **[GitHub Discussions](https://github.com/MadGoatHaz/blupow/discussions)** - Community support and questions.
-
----
-
-## License & Philosophy
-
-This project is licensed under the **MIT License**.
-
--   **Stability First**: The primary goal is to provide a stable, "it-just-works" experience.
--   **Professionalism**: We aim to build a reliable, robust tool for the community.
--   **Community Driven**: This project thrives on community contributions.
-
----
-
-## Support Development
-
-If this integration is useful for you, please consider showing your support!
-
-- **[GitHub Sponsors](https://github.com/sponsors/MadGoatHaz)** - The best way to support ongoing development.
-
-**Maintainer**: [@MadGoatHaz](https://github.com/MadGoatHaz)
-
----
-
 <!-- Badges -->
 [releases-shield]: https://img.shields.io/github/release/MadGoatHaz/blupow.svg?style=for-the-badge
 [releases]: https://github.com/MadGoatHaz/blupow/releases
 [commits-shield]: https://img.shields.io/github/commit-activity/y/MadGoatHaz/blupow.svg?style=for-the-badge
 [commits]: https://github.com/MadGoatHaz/blupow/commits/main
-[license-shield]: https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge
+[license-shield]: https://img.shields.io/badge/License-GPLv3-blue.svg?style=for-the-badge
 [maintenance-shield]: https://img.shields.io/badge/maintainer-@MadGoatHaz-blue.svg?style=for-the-badge
 [maintenance-url]: https://github.com/MadGoatHaz
 [sponsors-shield]: https://img.shields.io/badge/GitHub-Sponsors-ff69b4.svg?style=for-the-badge

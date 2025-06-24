@@ -46,6 +46,23 @@
 
 ---
 
+## 🏗️ **Codebase Architecture**
+
+The BluPow Gateway codebase is organized to separate concerns, making it modular and maintainable. All gateway-specific code resides in the `blupow_gateway/app/` directory.
+
+| Path | Description |
+|---|---|
+| **`main.py`** | **Application Orchestrator**: The main entry point. Initializes all other modules and manages the application's startup and shutdown lifecycle. |
+| **`device_manager.py`** | **Device Logic & State**: Manages all device objects, polling tasks, configuration (`devices.json`), and the BLE discovery cache. Contains the core business logic. |
+| **`mqtt_handler.py`** | **MQTT Communication**: Isolates all MQTT-related tasks. Connects to the broker, handles incoming commands, and publishes device data and Home Assistant discovery messages. |
+| **`devices/`** | **Device Drivers Directory**: Contains the specific drivers for each supported piece of hardware. |
+| `devices/base.py` | *Abstract Base Class*: Defines the common interface that all device drivers must implement. |
+| `devices/renogy_inverter.py` | *Concrete Driver*: Driver for Renogy inverters. |
+| `devices/renogy_controller.py`| *Concrete Driver*: Driver for Renogy solar charge controllers. |
+| `devices/generic_modbus_device.py` | *Concrete Driver*: A flexible, configurable driver for any Modbus-over-BLE device. |
+
+---
+
 ## 📚 **By Topic**
 
 ### **🎯 Project Overview & History**
@@ -53,15 +70,13 @@
 - **[Project Evolution](PROJECT_EVOLUTION.md)** - Complete development journey  
 - **[Project Completion Summary](PROJECT_COMPLETION_SUMMARY.md)** - Final achievements
 - **[Project History](PROJECT_HISTORY.md)** - Historical context
+- **[Changelog](CHANGELOG.md)** - Record of all notable changes to the project.
 
-### **🚀 Technical Breakthrough**
-- **[Final Success Documentation](FINAL_SUCCESS_DOCUMENTATION.md)** - Complete breakthrough story
-- **[Technical Breakthrough Analysis](TECHNICAL_BREAKTHROUGH_ANALYSIS.md)** - Deep technical analysis
-- **[Revolutionary Transformation Summary](REVOLUTIONARY_TRANSFORMATION_SUMMARY.md)** - Innovation overview
-- **[Technical Architecture](TECHNICAL_ARCHITECTURE.md)** - System architecture
+### **🚀 Technical Design**
+- **[Implementation Guide](IMPLEMENTATION_GUIDE.md)** - A detailed breakdown of the current gateway architecture and operational flows.
 
 ### **🛠️ Implementation & Setup**
-- **[Implementation Guide](IMPLEMENTATION_GUIDE.md)** - Complete setup instructions
+- **[Quick Start Guide](QUICK_START.md)** - Get the gateway running quickly.
 - **[Device Discovery Guide](DEVICE_DISCOVERY_GUIDE.md)** - Auto-discovery system
 - **[Container Setup Guide](guides/CONTAINER_SETUP_GUIDE.md)** - Docker configuration
 - **[Verification Guide](guides/VERIFICATION_GUIDE.md)** - Testing & validation
@@ -93,9 +108,8 @@
 3. [Device Discovery Guide](DEVICE_DISCOVERY_GUIDE.md) - Find compatible devices
 
 ### **"I want to understand the technology"**
-1. [Technical Architecture](TECHNICAL_ARCHITECTURE.md) - System design
-2. [Final Success Documentation](FINAL_SUCCESS_DOCUMENTATION.md) - Breakthrough story
-3. [Technical Breakthrough Analysis](TECHNICAL_BREAKTHROUGH_ANALYSIS.md) - Deep dive
+1. [Implementation Guide](IMPLEMENTATION_GUIDE.md) - A detailed breakdown of the current gateway architecture.
+2. [Authentication Research](development/AUTHENTICATION_RESEARCH.md) - Protocol details
 
 ### **"I want to contribute"**
 1. [Contributing Guide](../CONTRIBUTING.md) - How to contribute
@@ -119,6 +133,7 @@
 - **[blupow_multi_device_manager.py](../scripts/blupow_multi_device_manager.py)** - Multi-device monitoring
 - **[blupow_status_dashboard.py](../scripts/blupow_status_dashboard.py)** - Real-time dashboard
 - **[blupow_adaptive_coordinator.py](../scripts/blupow_adaptive_coordinator.py)** - Intelligent coordination
+- **[mqtt_viewer.py](../scripts/mqtt_viewer.py)** - A simple tool to monitor MQTT messages from the gateway.
 
 ### **🔧 Testing & Diagnostics**
 - **[verify_connection.py](../scripts/verify_connection.py)** - Connection testing
@@ -140,55 +155,48 @@
 3. Advanced: Multi-Device Manager → Adaptive Coordinator
 
 ### **🏗️ For Technical Understanding**
-1. Technical Architecture → Final Success Documentation
-2. Technical Breakthrough Analysis → Project Evolution
-3. Revolutionary Transformation Summary → Blueprint Summary
-
-### **👨‍💻 For Contributors**
-1. Blueprint Summary → Contributing Guide → Testing Guide
-2. Technical Architecture → Authentication Research
+1. [Implementation Guide](IMPLEMENTATION_GUIDE.md) - Current architecture.
+2. [Authentication Research](development/AUTHENTICATION_RESEARCH.md) - Protocol details.
 3. Project Evolution → Future Vision
 
+### **👨‍💻 For Contributors**
+1. [Contributing Guide](../CONTRIBUTING.md) - How to contribute
+2. [Testing Guide](development/TESTING_GUIDE.md) - Development process
+3. [Implementation Guide](IMPLEMENTATION_GUIDE.md) - Current architecture.
+
 ### **📚 For Complete Understanding**
-1. Blueprint Summary (master overview)
-2. Project Evolution (development journey) 
-3. Final Success Documentation (breakthrough story)
-4. Technical Architecture (system design)
-5. Implementation Guide (practical setup)
+1. [Project History](PROJECT_HISTORY.md) - Development journey
+2. [Implementation Guide](IMPLEMENTATION_GUIDE.md) - Current architecture and system design.
+3. [Quick Start Guide](QUICK_START.md) - Practical setup.
 
 ---
 
 ## 🏷️ **Document Categories**
 
 ### **🌟 Essential Reading** (Start Here)
-- Blueprint Summary
+- [Quick Start Guide](QUICK_START.md)
 - Main README
-- Implementation Guide
-- Device Discovery Guide
+- **[Implementation Guide](IMPLEMENTATION_GUIDE.md)**
+- **[Device Discovery Guide](DEVICE_DISCOVERY_GUIDE.md)**
 
 ### **🚀 Technical Deep Dive**
-- Technical Architecture
-- Final Success Documentation
-- Technical Breakthrough Analysis
-- Revolutionary Transformation Summary
+- **[Implementation Guide](IMPLEMENTATION_GUIDE.md)**
+- **[Authentication Research](development/AUTHENTICATION_RESEARCH.md)**
 
 ### **📋 Practical Guides**
-- Troubleshooting Guide
-- Container Setup Guide
-- Verification Guide
-- Energy Dashboard Plan
+- **[Troubleshooting Guide](troubleshooting/TROUBLESHOOTING.md)**
+- **[Container Setup Guide](guides/CONTAINER_SETUP_GUIDE.md)**
+- **[Verification Guide](guides/VERIFICATION_GUIDE.md)**
+- **[Energy Dashboard Plan](guides/ENERGY_DASHBOARD_PLAN.md)**
 
 ### **🔬 Development & Research**
-- Testing Guide
-- Authentication Research
-- Project Evolution
-- Contributing Guide
+- **[Testing Guide](development/TESTING_GUIDE.md)**
 
 ### **📊 Project Management**
-- Project Completion Summary
-- HACS Release Summary
-- Stability Enhancement Summary
-- Integration Success Report
+- **[Project Completion Summary](PROJECT_COMPLETION_SUMMARY.md)**
+- **[HACS Release Summary](HACS_RELEASE_SUMMARY.md)**
+- **[Stability Enhancement Summary](STABILITY_ENHANCEMENT_SUMMARY.md)**
+- **[Integration Success Report](INTEGRATION_SUCCESS_REPORT.md)**
 
 ---
 

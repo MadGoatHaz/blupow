@@ -1,10 +1,47 @@
 {
+  "title": "BluPow",
   "config": {
     "step": {
       "user": {
         "title": "BluPow",
         "description": "A single instance of the BluPow gateway is required. Device management is handled in the integration options."
+      },
+      "discover": {
+        "title": "Select a Discovered Device",
+        "data": {
+          "address": "Discovered Renogy Devices"
+        }
+      },
+      "device_type": {
+        "title": "Select Device Type",
+        "description": "Please select the correct type for the device at `{address}`.",
+        "data": {
+          "type": "Device Type"
+        }
+      },
+      "manual": {
+        "title": "Manually Add a Device",
+        "description": "Enter the Bluetooth MAC Address and select the device type.",
+        "data": {
+          "address": "Bluetooth MAC Address (e.g., AA:BB:CC:DD:EE:FF)",
+          "type": "Device Type"
+        }
+      },
+      "no_devices_found": {
+        "title": "No Devices Found",
+        "description": "The initial scan did not find any compatible Renogy devices. Please ensure your device is powered on and not connected to another application.",
+        "menu_options": {
+          "discover": "Scan Again",
+          "manual": "Add Device Manually"
+        }
       }
+    },
+    "error": {
+      "no_devices_found": "No new Renogy devices were found nearby. Please ensure your device is powered on and in range. You can try scanning again or add the device manually.",
+      "cannot_connect": "Could not connect to the device. Please ensure it is powered on, in range, and not connected to another app.",
+      "already_exists": "This device is already configured in the gateway.",
+      "timeout": "The gateway did not respond in time. It may be offline or restarting.",
+      "unknown_error": "An unknown error occurred while adding the device."
     },
     "abort": {
       "single_instance_allowed": "Only one BluPow gateway can be configured."
@@ -15,7 +52,8 @@
       "init": {
         "title": "Manage BluPow Devices",
         "menu_options": {
-          "discover_devices": "Discover and Add a New Device"
+          "discover_devices": "Discover and Add a New Device",
+          "manage_devices": "Manage Existing Devices"
         }
       },
       "select_discovered_device": {
@@ -26,20 +64,29 @@
       },
       "set_device_type": {
         "title": "Select Device Type",
-        "description": "Please select the type for device: {device_name}",
+        "description": "Please select the correct type for the device: {device_name}",
         "data": {
           "device_type": "Device Type"
         }
+      },
+      "manage_devices": {
+        "title": "Remove Configured Devices",
+        "data": {
+          "devices_to_remove": "Select devices to remove"
+        }
       }
+    },
+    "error": {
+      "not_implemented": "This feature is not yet implemented."
     },
     "abort": {
       "no_devices_found": "No new BluPow devices were found on the network.",
       "discovery_timeout": "Timed out waiting for a response from the BluPow gateway.",
       "discovery_failed": "An unexpected error occurred during discovery.",
       "device_not_found": "The selected device could not be found.",
-      "add_device_timeout": "Timed out waiting for a response from the BluPow gateway.",
-      "add_device_failed": "The gateway failed to add the device.",
-      "not_implemented": "This feature is not yet implemented."
+      "add_device_failed": "The gateway failed to add the device. Check gateway logs for more details.",
+      "get_devices_failed": "Failed to retrieve the list of configured devices from the gateway.",
+      "no_devices_configured": "There are currently no devices configured in the gateway."
     }
   }
 } 

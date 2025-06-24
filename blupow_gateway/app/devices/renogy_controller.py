@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional, List
 
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
+from bleak.backends.device import BLEDevice
 
 from .base import BaseDevice
 from ..utils import _calculate_crc, _bytes_to_int, _parse_temperature
@@ -17,8 +18,8 @@ READ_TIMEOUT = 15.0
 class RenogyController(BaseDevice):
     """Driver for Renogy solar charge controllers."""
 
-    def __init__(self, address: str, device_type: str):
-        super().__init__(address, device_type)
+    def __init__(self, address: str, device_type: str, config: dict, ble_device: Optional[BLEDevice] = None):
+        super().__init__(address, device_type, ble_device)
         self.device_id = 1  # Modbus ID for controllers
         self.notify_uuid = "0000fff1-0000-1000-8000-00805f9b34fb"
         self.write_uuid = "0000ffd1-0000-1000-8000-00805f9b34fb"
@@ -61,51 +62,69 @@ class RenogyController(BaseDevice):
 
     async def poll(self) -> Optional[Dict[str, Any]]:
         _LOGGER.debug(f"[{self.mac_address}] Starting data fetch process.")
+        
         try:
-            client = await self._get_bleak_client()
-            await client.start_notify(self.notify_uuid, self._notification_handler)
+            if not self.is_connected:
+                _LOGGER.info(f"[{self.mac_address}] Not connected, establishing connection.")
+                if not await self.connect():
+                    _LOGGER.error(f"Could not connect to {self.mac_address} for polling.")
+                    return None
+            
+            assert self._client is not None # Should be connected here
+
+            # Ensure notifications are enabled
+            await self._client.start_notify(self.notify_uuid, self._notification_handler)
 
             self._data_buffer.clear()
+            all_data = {}
             for section in self.sections:
-                command = self._build_modbus_command(section['register'], section['words'])
-                self._notification_event.clear()
-                await client.write_gatt_char(self.write_uuid, command, response=False)
-                await asyncio.wait_for(self._notification_event.wait(), timeout=READ_TIMEOUT)
+                try:
+                    command = self._build_modbus_command(section['register'], section['words'])
+                    self._notification_event.clear()
+                    await self._client.write_gatt_char(self.write_uuid, command, response=False)
+                    await asyncio.wait_for(self._notification_event.wait(), timeout=READ_TIMEOUT)
+                    # Data from the handler is placed in _data_buffer, let's merge it
+                    all_data.update(self._data_buffer)
+                except asyncio.TimeoutError:
+                    _LOGGER.warning(f"[{self.mac_address}] Timeout polling register {section['register']}. Skipping.")
+                    continue # Try the next section
+            
+            # Stop notifications to save battery, but keep the connection alive.
+            await self._client.stop_notify(self.notify_uuid)
 
-            # We stop notifications but don't disconnect the client, to allow for caching.
-            await client.stop_notify(self.notify_uuid)
-
-            return self._data_buffer
+            return all_data if all_data else None
 
         except BleakError as e:
-            _LOGGER.error(f"[{self.mac_address}] BleakError during operation: {e}")
-            # On a BLE error, force a disconnect so the next attempt gets a fresh client.
-            await self._disconnect()
-            return None
-        except asyncio.TimeoutError:
-            _LOGGER.warning(f"[{self.mac_address}] Timeout waiting for notification.")
-            # Timeouts may be transient, so we don't force a disconnect here.
+            _LOGGER.error(f"[{self.mac_address}] BleakError during poll: {e}. Disconnecting.")
+            await self.disconnect() # Force disconnect on BleakError
             return None
         except Exception as e:
-            _LOGGER.error(f"[{self.mac_address}] An unexpected error occurred: {e}", exc_info=True)
-            await self._disconnect()
+            _LOGGER.error(f"[{self.mac_address}] An unexpected error occurred during poll: {e}", exc_info=True)
+            await self.disconnect()
             return None
-        # The 'finally' block is removed as we now manage disconnection via the cache timer.
 
     def _notification_handler(self, sender, data: bytearray):
         _LOGGER.debug(f"[{self.mac_address}] Received notification: {data.hex()}")
+        # We don't know which request this response is for, so we try all parsers
+        # This is less efficient but more robust if responses arrive out of order.
         parser_found = False
         for section in self.sections:
-            # Check if the received data length matches the expected length for a section
-            if len(data) == section['words'] * 2 + 5: # 5 bytes for Modbus RTU framing
-                # Ensure data is passed as immutable bytes to parsers
-                parsed_data = section['parser'](bytes(data))
-                self._data_buffer.update(parsed_data)
-                parser_found = True
-                break
+            # A simple length check is a good first-pass filter
+            if len(data) >= 5: # Minimum length of a modbus frame
+                try:
+                    # Pass immutable bytes to parsers
+                    parsed_data = section['parser'](bytes(data))
+                    if parsed_data: # If parser returns data, we assume it was the right one
+                        self._data_buffer.clear() # Clear previous partial data
+                        self._data_buffer.update(parsed_data)
+                        parser_found = True
+                        break
+                except Exception:
+                    # This parser didn't work, try the next one
+                    continue
         
         if not parser_found:
-            _LOGGER.warning(f"[{self.mac_address}] Received unexpected data length: {len(data)}")
+            _LOGGER.warning(f"[{self.mac_address}] Could not parse received data: {data.hex()}")
 
         self._notification_event.set()
 
@@ -124,6 +143,9 @@ class RenogyController(BaseDevice):
         return {'model': (bs[3:19]).decode('utf-8', 'ignore').strip().rstrip('\x00')}
 
     def _parse_charging_info(self, bs: bytes) -> Dict[str, Any]:
+        # Basic validation: Check function code (0x03) and byte count
+        if len(bs) < 5 or bs[1] != 0x03 or bs[2] != 68: # 34 words * 2 = 68 bytes
+            return {}
         charging_state_map = {0: 'deactivated', 1: 'activated', 2: 'mppt', 3: 'equalizing', 4: 'boost', 5: 'floating', 6: 'current limiting'}
         load_state_map = {0: 'off', 1: 'on'}
         return {
@@ -148,17 +170,16 @@ class RenogyController(BaseDevice):
         }
 
     def _parse_battery_type(self, bs: bytes) -> Dict[str, Any]:
+        # Basic validation: Check function code (0x03) and byte count
+        if len(bs) < 5 or bs[1] != 0x03 or bs[2] != 2: # 1 word * 2 = 2 bytes
+            return {}
         battery_type_map = {1: 'open', 2: 'sealed', 3: 'gel', 4: 'lithium', 5: 'custom'}
         return {'battery_type': battery_type_map.get(int(_bytes_to_int(bs, 3, 2)), 'unknown')}
 
     async def test_connection(self) -> bool:
         """Test the BLE connection to the controller."""
         _LOGGER.info(f"Testing connection to Renogy Controller at {self.mac_address}")
-        try:
-            async with BleakClient(self.mac_address, timeout=10.0) as client:
-                is_connected = await client.is_connected()
-                _LOGGER.info(f"Connection test result for {self.mac_address}: {is_connected}")
-                return is_connected
-        except BleakError as e:
-            _LOGGER.error(f"Connection test failed for {self.mac_address}: {e}")
-            return False 
+        is_connected = await self.connect()
+        if is_connected:
+            await self.disconnect()
+        return is_connected 

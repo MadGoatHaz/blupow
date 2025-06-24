@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, List
 from bleak.exc import BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak import BleakClient
+from bleak.backends.device import BLEDevice
 
 from .base import BaseDevice
 
@@ -54,8 +55,8 @@ class RenogyInverter(BaseDevice):
     This is a placeholder implementation.
     """
 
-    def __init__(self, address: str, device_type: str):
-        super().__init__(address, device_type)
+    def __init__(self, address: str, device_type: str, ble_device: Optional[BLEDevice] = None):
+        super().__init__(address, device_type, ble_device)
         # Inverter-specific UUIDs and details would go here
         self.notify_uuid = "0000ffd2-0000-1000-8000-00805f9b34fb"
         self.write_uuid = "0000ffd1-0000-1000-8000-00805f9b34fb"

@@ -1,88 +1,78 @@
-# BluPow Quick Start Guide
+# BluPow Gateway: Quick Start Guide
 
-This guide provides the fastest path to getting the BluPow integration up and running.
+This guide provides the fastest path to getting the BluPow Gateway and its corresponding Home Assistant integration running using Docker.
+
+**Audience**: This guide is intended for developers or advanced users who are running the gateway from a cloned version of this repository.
+**Prerequisites**: You must have a working Docker and Docker Compose environment, a Bluetooth adapter, and a running MQTT broker.
 
 ---
 
-## 🚨 Core Environment Commands 🚨
+## 🚀 **3-Step Setup**
 
-**This is the single source of truth for managing the development environment.** All services are defined in a `docker-compose.yml` file located in the `~/opt/` directory, **one level above the project's git repository root.**
+This is the single source of truth for running the development/local environment.
 
-You **MUST** use these commands from the `~/opt/` directory to manage the lifecycle of the Home Assistant and BluPow Gateway containers.
+### **Step 1: Configure the Environment**
 
-### Start or Restart Environment
-This is the standard command to bring up all services in a clean, detached state.
+First, clone the repository to the machine that has Bluetooth and will run the gateway.
+
 ```bash
-# From the ~/opt/ directory
+git clone https://github.com/MadGoatHaz/blupow.git
+cd blupow/
+```
+
+Next, navigate to the `blupow_gateway` directory and create your environment configuration file.
+
+```bash
+cd blupow_gateway/
+cp .env.example .env
+```
+
+Now, **edit the `.env` file** with your favorite editor. You must set the `MQTT_BROKER_HOST` to the IP address of your MQTT broker. If your broker requires authentication, you must also set `MQTT_USER` and `MQTT_PASS`.
+
+### **Step 2: Launch the Gateway**
+
+With the environment configured, use Docker Compose to build and run the gateway container in the background.
+
+```bash
+# From the blupow_gateway/ directory
 docker compose up -d --build
 ```
 
-### Stop Environment
-This stops and removes all running containers defined in the compose file.
+**What's happening?**
+*   `--build`: This tells Docker Compose to build the gateway's Docker image from the `Dockerfile` in the current directory.
+*   `-d`: This runs the container in "detached" mode, so it continues running in the background.
+
+You can check the logs at any time to see what the gateway is doing:
 ```bash
-# From the ~/opt/ directory
-docker compose down
+docker compose logs -f
 ```
 
-### View Logs
-To see the logs for a specific service (e.g., Home Assistant or the gateway):
-```bash
-# For Home Assistant
-docker compose logs -f homeassistant
+### **Step 3: Configure Home Assistant**
 
-# For the BluPow Gateway
-docker compose logs -f blupow-gateway
-```
+1.  **Copy the Integration**: Copy the `custom_components/blupow` directory from the repository root into your Home Assistant's `custom_components` folder.
+2.  **Restart Home Assistant**: This is required for Home Assistant to recognize the new integration.
+3.  **Add the Integration**:
+    *   In Home Assistant, go to **Settings > Devices & Services**.
+    *   Click **+ Add Integration** and search for **BluPow**.
+    *   Select it. No further configuration is needed.
+4.  **Add Your Devices**:
+    *   Find the BluPow integration card and click **Configure**.
+    *   Select **Auto Discover Devices**. The gateway will scan for nearby BLE devices.
+    *   Choose your device from the list, select the correct **Device Type** (e.g., Renogy Controller), and click **Submit**.
+    *   Done! Your device and its sensors will now appear in Home Assistant.
+
 ---
 
-### Step 1: Run the BluPow Gateway
+## Troubleshooting
 
-Ensure the BluPow Gateway container is running and connected to your MQTT broker. Refer to the `docker-compose.yaml` file in the root of the project for the recommended setup.
-
-```yaml
-services:
-  blupow-gateway:
-    container_name: blupow-gateway
-    image: blupow-gateway:latest
-    restart: unless-stopped
-    privileged: true # Required for Bluetooth access
-    networks:
-      - blupow-net # Must be on the same network as your MQTT broker
-    volumes:
-      - /var/run/dbus:/var/run/dbus # For Bluetooth access
-    environment:
-      - MQTT_BROKER=blupow-mosquitto # Hostname of your MQTT broker
-      # ... other environment variables
-```
-
-### Step 2: Add the Integration in Home Assistant
-
-1.  If you have an old version of the BluPow integration, **delete it first** from **Settings > Devices & Services**.
-2.  Go to **Settings > Devices & Services**.
-3.  Click **+ ADD INTEGRATION**, search for "BluPow", and select it.
-
-### Step 3: Add a Device
-
-A menu will appear.
-
-#### To Auto Discover:
-
-1.  Select **Auto Discover Devices**.
-2.  The system will scan for 10 seconds.
-3.  Choose your device from the dropdown list.
-4.  Select the correct **Device Type** and submit.
-
-#### To Add Manually:
-
-1.  Select **Add Device Manually**.
-2.  Enter the **MAC Address** and select the **Device Type**.
-3.  Submit the form.
-
-### Step 4: Done!
-
-The BluPow integration is now configured. The gateway will automatically find the new device and publish its sensors to Home Assistant via MQTT Discovery. Your sensors should appear shortly.
-
-To manage devices later (add more or remove them), simply click **CONFIGURE** on the BluPow integration card.
+-   **Device not found during discovery?**
+    *   Check the gateway logs (`docker compose logs -f`) for any Bluetooth errors.
+    -   Ensure your device is powered on and advertising.
+    -   Make sure the gateway machine is within Bluetooth range of your device.
+-   **Sensors are "Unavailable" in Home Assistant?**
+    -   Use an MQTT exploration tool (like MQTT Explorer) to verify that the gateway is publishing data to the `blupow/.../state` topics.
+    -   Verify that the gateway is publishing discovery messages to the `homeassistant/sensor/...` topics.
+    -   Check the gateway logs for any polling errors after the device was added.
 
 ---
 

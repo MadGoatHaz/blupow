@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.0.0] - 2025-06-23 - 🏗️ **The Great Refactoring: A Foundation for the Future**
+
+This is a developer-focused release that fundamentally refactors the BluPow Gateway for vastly improved stability, maintainability, and future extensibility. There are no user-facing feature changes, but the underlying improvements are critical for the project's long-term health.
+
+### ✨ **Added**
+- **`DeviceManager` Module**: A new, dedicated module (`device_manager.py`) now manages all device state, logic, polling loops, and BLE interactions.
+- **`MqttHandler` Module**: A new, dedicated module (`mqtt_handler.py`) now isolates all MQTT connection and communication logic.
+- **Stateful Device Configuration**: The gateway now saves its list of added devices to `blupow_gateway/config/devices.json` and automatically reloads them on restart.
+- **BLE Discovery Caching**: The `DeviceManager` now caches the results of a BLE scan, making the `add_device` process faster and immune to race conditions.
+
+### 🎯 **Changed**
+- **Gateway Architecture**: The core logic previously in `blupow_gateway/app/main.py` has been completely refactored into the new `DeviceManager` and `MqttHandler` modules. `main.py` is now a simple application lifecycle orchestrator.
+- **Device Driver API**: The abstract `BaseDevice` class has been updated. The primary data-gathering method is now `poll()`, which is responsible for the full connect-read-disconnect cycle.
+- **Documentation Overhaul**: All project documentation (`README.md`, `IMPLEMENTATION_GUIDE.md`, `CONTRIBUTING.md`, etc.) has been rewritten from scratch to accurately reflect the new architecture and future roadmap.
+
+### 🚫 **Removed**
+- **Monolithic Logic**: All complex business logic has been removed from `main.py`.
+
 ## [3.0.0] - 2025-06-22 - 🎉 **The Container Revolution: Unmatched Stability**
 
 ### ✨ **Added**

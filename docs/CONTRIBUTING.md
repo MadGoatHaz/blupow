@@ -102,6 +102,8 @@ pip install homeassistant
 - **Developer docs**: Architecture, API documentation
 - **Examples**: Dashboard configurations, automations
 - **Translations**: Multi-language support
+- **Device compatibility**: Testing with different models
+- **Quality assurance**: Code review, static analysis
 
 ### **🧪 Testing & Quality**
 - **Test cases**: Unit tests, integration tests
@@ -113,16 +115,16 @@ pip install homeassistant
 
 ## 🏗️ How to Add Support for a New Device
 
-The BluPow Gateway is designed to be easily extensible. All device-specific logic is contained within **Driver** classes.
+The BluPow Gateway is designed to be easily extensible. All device-specific logic is contained within **Driver** classes located in `blupow_gateway/app/devices/`.
 
 ### **Option 1: The Device Uses Modbus (The Easy Way)**
 
-If your device uses a standard Modbus protocol over BLE, you can likely add support without writing any code by using the `GenericModbusDevice` driver.
+If your device uses a standard Modbus protocol over BLE, you can likely add support without writing any new Python code by using the `GenericModbusDevice` driver.
 
-1.  **Read the Guide**: First, read the **[Custom Device Configuration Guide](guides/CUSTOM_DEVICE_GUIDE.md)** to understand how it works.
-2.  **Find Device Specs**: You will need to know your device's Modbus register map and the UUIDs for its BLE service.
-3.  **Configure `devices.json`**: Add a new entry for your device with the `type` set to `generic_modbus_device` and create the required `config` block.
-4.  **Test**: Restart the gateway and check the logs. If the configuration is correct, your device should appear in Home Assistant.
+1.  **Find Device Specs**: You will need to know your device's Modbus register map (what data is at what address) and the GATT UUIDs for its BLE service.
+2.  **Add a `devices.test.json`**: In the `blupow_gateway/tests/config/` directory, create a `devices.test.json` file.
+3.  **Configure Your Device**: Add an entry for your device with the `type` set to `generic_modbus_device` and create the required `config` block with the registers and UUIDs. See the `renogy_controller.py` driver and the `devices.json` in the same directory for examples.
+4.  **Test**: Restart the gateway. If the configuration is correct, your device should appear in Home Assistant, and you can verify its data.
 5.  **Contribute**: If it works, please consider sharing your `config` block in a GitHub discussion so others can benefit!
 
 ### **Option 2: The Device Uses a Custom Protocol (The Developer Way)**
@@ -130,38 +132,76 @@ If your device uses a standard Modbus protocol over BLE, you can likely add supp
 If your device has a non-standard communication protocol, you will need to create a new Python driver.
 
 1.  **Create a New Driver File**: In the `blupow_gateway/app/devices/` directory, create a new file (e.g., `my_new_device.py`).
-2.  **Create the Driver Class**: Inside the file, create a class that inherits from `BaseDevice`. The class name should be in CamelCase (e.g., `MyNewDevice`). The gateway will automatically use a snake_case version of this name (`my_new_device`) as the `type` in the configuration.
+
+2.  **Create the Driver Class**: Inside the file, create a class that inherits from `BaseDevice`. The class name should be in CamelCase (e.g., `MyNewDevice`).
     ```python
+    import asyncio
+    from typing import Any, Dict, List, Optional
+
     from .base import BaseDevice
     # ... other imports
 
     class MyNewDevice(BaseDevice):
         """Driver for the awesome new device."""
         
-        def __init__(self, address: str, device_type: str):
-            super().__init__(address, device_type)
-            # Add any device-specific initialization here
+        def __init__(self, address: str, device_type: str, config: dict, ble_device: Optional[BLEDevice] = None):
+            super().__init__(address, device_type, ble_device)
+            # Add any device-specific initialization here (e.g., UUIDs)
         
         def get_sensor_definitions(self) -> List[Dict[str, Any]]:
-            # Return a list of dicts defining your sensors for HA discovery
-            # See renogy_controller.py for a detailed example
+            """Return a list of dicts defining your sensors for HA discovery."""
+            # See renogy_controller.py for a detailed example of all available fields.
             return [
-                {"key": "voltage", "name": "Voltage", "unit": "V"},
+                {"key": "voltage", "name": "Voltage", "unit": "V", "device_class": "voltage"},
                 # ... other sensors
             ]
 
-        async def get_data(self) -> Optional[Dict[str, Any]]:
-            # This is the core logic. Connect to the device via Bleak,
-            # send commands, parse data, and return a dictionary 
-            # where keys match the 'key' in your sensor definitions.
-            # See renogy_controller.py for a detailed example.
-            pass
+        async def poll(self) -> Optional[Dict[str, Any]]:
+            """
+            Connect, poll data, and disconnect from the device.
+            This is the core logic for your driver.
+            """
+            # Ensure connection is established
+            if not await self.connect():
+                return None # The manager will handle logging this error
+
+            try:
+                # Use self._client (a BleakClient instance) to interact with the device
+                # Example: raw_data = await self._client.read_gatt_char("YOUR_UUID_HERE")
+                
+                # Parse the raw data into a dictionary where keys match your 
+                # sensor definitions above.
+                parsed_data = {"voltage": 12.5} # Your parsing logic here
+
+                return parsed_data
+
+            except Exception as e:
+                # Log the error and return None so the manager knows it failed
+                _LOGGER.error(f"[{self.mac_address}] Error polling MyNewDevice: {e}")
+                return None
+            finally:
+                # Ensure disconnection
+                await self.disconnect()
     ```
-3.  **Implement the Methods**:
-    *   `get_sensor_definitions()`: This method must return a list of dictionaries, one for each sensor your device exposes. This data is used for Home Assistant's MQTT discovery.
-    *   `get_data()`: This is where you implement the actual communication. Use the `bleak` library to connect, write, and read data. Parse the data and return it in a dictionary.
-4.  **Test**: Configure your new device in `devices.json` using the auto-generated `type` and test it thoroughly.
-5.  **Submit a Pull Request**: Once you are confident it works well, submit a PR to share your new driver with the community.
+3.  **Update the Factory Function**: Open `blupow_gateway/app/device_manager.py` and add your new device to the `create_device` static method.
+    ```python
+    # In device_manager.py
+    # ... other imports
+    from app.devices.my_new_device import MyNewDevice # 👈 Add your import
+
+    class DeviceManager:
+        # ...
+        @staticmethod
+        def create_device(...):
+            # ...
+            if device_type == "renogy_inverter":
+                return RenogyInverter(...)
+            if device_type == "my_new_device": # 👈 Add your new type
+                return MyNewDevice(...)
+            #...
+    ```
+4.  **Test**: Add your new device to `blupow_gateway/tests/config/devices.test.json` using its type (e.g., `my_new_device`) and test it thoroughly.
+5.  **Submit a Pull Request**: Once you are confident it works well, submit a PR to share your new driver with the community. Include an update to the `device_manager.py` file.
 
 ---
 
@@ -201,28 +241,7 @@ except BluetoothConnectionError as err:
 ```
 
 ### **Home Assistant Integration Standards**
-```python
-# ✅ Good: Proper entity naming
-@property
-def unique_id(self) -> str:
-    """Return unique ID for this sensor."""
-    return f"{self._device_mac}_{self._sensor_key}"
-
-@property
-def name(self) -> str:
-    """Return friendly name for this sensor."""
-    return f"{self._device_name} {self._sensor_config.name}"
-
-# ✅ Good: Proper availability logic
-@property
-def available(self) -> bool:
-    """Return if sensor is available."""
-    return (
-        self.coordinator.last_update_success
-        and self._sensor_key in self.coordinator.data
-        and self.coordinator.data[self._sensor_key] is not None
-    )
-```
+This section is less relevant now as most logic resides in the gateway. The primary standard for the HA component is to keep it as simple as possible, delegating all complex work to the gateway via MQTT.
 
 ### **Code Formatting**
 ```bash
