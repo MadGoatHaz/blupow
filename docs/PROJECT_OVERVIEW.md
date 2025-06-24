@@ -1,198 +1,86 @@
-# BluPow Multi-Device Home Assistant Integration
+# BluPow: Universal BLE to MQTT Gateway for Home Assistant
 
 **ETHOS**: Quality through understanding. Every component has its place. Document thoroughly without clutter. Full comprehension before action.
 
 ## Project Overview
 
-BluPow is a comprehensive Home Assistant integration for Renogy devices that provides real-time monitoring and control of multiple device types through Bluetooth Low Energy communication. Built on the proven [cyrils/renogy-bt](https://github.com/cyrils/renogy-bt) foundation, BluPow offers a modular, future-ready architecture for expanding solar energy system monitoring.
+BluPow is a comprehensive Home Assistant integration that bridges the gap between Bluetooth Low Energy (BLE) devices and your smart home. It provides real-time monitoring and a stable, extensible platform for integrating a wide variety of BLE-enabled hardware.
 
-## Current Device Support
-
-### **Inverter Devices**
-- **RIV1230RCH-SPS** (Built-in BLE)
-  - MAC: D8:B6:73:BF:4F:75
-  - Device ID: 32
-  - **Capabilities**: AC Input/Output monitoring, Battery management, Load monitoring, Solar pass-through
-  - **Unique Sensors**: AC voltage/current/frequency, Load active/apparent power, Line charging
-
-### **Charge Controllers**  
-- **RNG-CTRL-RVR40** (BT-2 Module)
-  - MAC: C4:D3:6A:66:7E:D4
-  - Device ID: 96
-  - **Capabilities**: Solar MPPT, Battery charging, Generation statistics, DC load monitoring
-  - **Unique Sensors**: PV voltage/current/power, Charging algorithms, Generation stats
+The project's primary goal is to provide a reliable, easy-to-use, and easy-to-extend solution for any device that uses BLE to broadcast data, with a special focus on devices using Modbus over BLE, such as many solar power components.
 
 ## Architecture Principles
 
-### **1. Device Type Segregation**
-- **Strict Type Isolation**: Each device type has completely separate data structures
-- **Capability-Based Access**: Devices only expose sensors they actually support  
-- **No Cross-Contamination**: Inverter data never mixes with controller data
+### **1. Stability and Decoupling**
+- **Gateway Model**: A standalone Python gateway, running in Docker, handles all BLE communication. This isolates potentially unstable Bluetooth interactions from the Home Assistant core, preventing crashes or slowdowns.
+- **MQTT for Communication**: The gateway communicates with Home Assistant exclusively through MQTT. This is a robust, lightweight, and standard protocol for IoT communication.
+- **HA Integration**: The Home Assistant component is extremely lightweight. Its only jobs are to provide a configuration UI and listen for device announcements via MQTT.
 
-### **2. Protocol Foundation**
-- **Base Protocol**: Modbus over Bluetooth LE
-- **Library Foundation**: [cyrils/renogy-bt](https://github.com/cyrils/renogy-bt) proven implementation
-- **Communication**: Direct device communication with robust fallback system
-
-### **3. Future-Ready Design**
-- **Modular Device Classes**: Easy addition of new device types
-- **Extensible Sensor Framework**: Dynamic sensor loading based on device capabilities
-- **Device Registry**: Centralized device type and capability management
+### **2. Extensibility**
+- **Device-Agnostic Core**: The gateway is not tied to any specific brand (e.g., Renogy). Its core function is to scan for, connect to, and manage BLE devices.
+- **Driver-Based Design**: Support for new devices is added by creating new "device driver" classes. This makes expansion straightforward and modular.
+- **Generic Support**: The architecture can easily support any device that exposes data over BLE, from power inverters to temperature sensors and beyond.
 
 ## Technical Architecture
 
 ### **Data Flow**
-```
-Renogy Device → renogy-bt → BluPow Wrapper → HA Coordinator → HA Sensors
-```
+The data flow is simple and robust:
+`BLE Device → BluPow Gateway (Docker) → MQTT Broker → Home Assistant Integration → HA Sensors`
 
 ### **Component Structure**
+The project is split into two main components:
 ```
-BluPow/
-├── blupow_client.py          # Current legacy client (to be replaced)
-├── coordinator.py            # Multi-device coordinator
-├── sensor.py                 # Dynamic sensor framework
-├── const.py                  # Device definitions and constants
-├── device_factory.py         # Device type factory (future)
-├── devices/
-│   ├── blupow_inverter.py    # Inverter wrapper (future)
-│   ├── blupow_controller.py  # Controller wrapper (future)
-│   └── blupow_battery.py     # Battery wrapper (future)
-└── docs/                     # Comprehensive documentation
+/
+├── blupow_gateway/             # The standalone Python BLE-to-MQTT Gateway
+│   ├── app/
+│   │   ├── main.py             # Core application logic, MQTT handling, discovery
+│   │   └── devices/            # Directory for individual device drivers
+│   │       ├── base.py         # Base class for all device drivers
+│   │       └── renogy_*.py     # Example drivers for Renogy devices
+│   └── Dockerfile
+│
+└── custom_components/
+    └── blupow/                 # The Home Assistant integration
+        ├── __init__.py
+        ├── config_flow.py      # Handles the UI for discovery and adding devices
+        └── manifest.json
 ```
 
-## Current Status
-
-### **✅ What's Working**
-1. **Multi-Device Detection**: Both devices properly detected and configured
-2. **Home Assistant Integration**: Fully loaded with 22-23 entities per device
-3. **Fallback System**: Robust fallback prevents "Unavailable" sensors
-4. **Project Organization**: Comprehensive tooling and documentation
-
-### **❌ Critical Issues**
-1. **Connection Failures**: 90%+ Bluetooth connection failures on both devices
-2. **Fake Data**: Integration using hardcoded fallback data instead of real device communication
-3. **Device Confusion**: Both devices showing similar data instead of device-specific information
-4. **Protocol Mismatch**: Current client doesn't use proper Modbus-over-Bluetooth protocol
-
-## Integration Roadmap
-
-### **Phase 1: Foundation Setup** (Week 1)
-1. **Install renogy-bt dependency**
-2. **Create BluPow wrapper classes**
-3. **Test basic device communication**
-4. **Verify protocol compatibility**
-
-**Deliverables:**
-- `blupow_renogy_client.py` - New client based on renogy-bt
-- `device_factory.py` - Device type factory
-- `communication_test.py` - Real device communication tests
-
-### **Phase 2: Device-Specific Implementation** (Week 2)
-1. **Implement inverter wrapper**
-2. **Implement controller wrapper**
-3. **Create device-specific sensors**
-4. **Map register data to HA entities**
-
-**Deliverables:**
-- `blupow_inverter.py` - Inverter device class
-- `blupow_controller.py` - Controller device class
-- `const_inverter.py` - Inverter sensor definitions
-- `const_controller.py` - Controller sensor definitions
-
-### **Phase 3: Home Assistant Integration** (Week 3)
-1. **Update coordinator for multi-device support**
-2. **Implement dynamic sensor loading**
-3. **Add device discovery**
-4. **Create migration from current system**
-
-**Deliverables:**
-- `multi_device_coordinator.py` - New coordinator
-- `dynamic_sensor_loader.py` - Capability-based sensor loading
-- `migration_script.py` - Migration from current system
-
-### **Phase 4: Testing & Deployment** (Week 4)
-1. **Real device communication tests**
-2. **Multi-device coordination tests**
-3. **Home Assistant integration tests**
-4. **Production deployment**
-
-## Device Capabilities Matrix
-
-| Feature | Inverter (RIV1230RCH-SPS) | Controller (RNG-CTRL-RVR40) |
-|---------|---------------------------|------------------------------|
-| **AC Input Monitoring** | ✅ Voltage, Current, Frequency | ❌ Not applicable |
-| **AC Output Monitoring** | ✅ Voltage, Current, Frequency, Power | ❌ Not applicable |
-| **Load Monitoring** | ✅ Active Power, Apparent Power, % | ✅ DC Load only |
-| **Solar MPPT** | ✅ Pass-through only | ✅ Full MPPT control |
-| **Battery Management** | ✅ Charging, Voltage, SOC | ✅ Charging algorithms |
-| **Generation Statistics** | ✅ Basic stats | ✅ Daily/Total generation |
-| **Temperature Monitoring** | ✅ Inverter temp | ✅ Controller temp |
+## How Device Discovery Works
+1. The user initiates discovery from the Home Assistant UI.
+2. The HA integration publishes a `discover_devices` command to the `blupow/gateway/command` MQTT topic.
+3. The BluPow Gateway receives the command and initiates a BLE scan.
+4. The gateway performs a broad scan, filtering out only devices that have already been added to avoid clutter. **It does not filter by brand or name.**
+5. It publishes the list of found devices back to a response topic.
+6. The Home Assistant `config_flow` shows the user the list of discovered devices.
+7. The user selects a device to add, and the `config_flow` sends an `add_device` command to the gateway.
+8. The gateway creates, tests, and saves the new device, then publishes its MQTT discovery configuration to Home Assistant, which automatically creates the corresponding entities.
 
 ## Future Expansion Plan
 
-### **Additional Device Types**
-- **Battery Management Systems**: RBT100LFP12S, RBT200LFP12-BT
-- **DC-DC Chargers**: DCC50S, RBC50D1S-G1
-- **Monitoring Devices**: Renogy ONE, Smart Shunt
-- **Additional Inverters**: RIV4835CSH1S, other models
+### **Adding New Device Types**
+The primary goal for expansion is to add support for a wider variety of devices. The process is:
+1. Create a new Python class in the `blupow_gateway/app/devices/` directory that inherits from `BaseDevice`.
+2. Implement the `poll()` and `get_sensor_definitions()` methods for your specific device.
+3. Update the `create_device` factory function in `main.py` to recognize your new device type.
 
-### **Enhanced Features**
-- **Real-time Parameter Adjustment**: Change device settings via HA
-- **Advanced Monitoring**: Historical data, trend analysis
-- **Energy Dashboard Integration**: Native HA energy dashboard support
-- **Automation Triggers**: Device state-based automations
+### **Potential Device Categories**
+- Battery Management Systems (BMS)
+- Smart Shunts
+- DC-DC Chargers
+- Environmental Sensors (Temperature, Humidity)
+- Any other device that communicates via BLE
 
 ## Success Metrics
 
-1. **Real Device Communication**: 90%+ success rate for Bluetooth connections
-2. **Data Accuracy**: Real sensor readings from actual devices, not fallback data
-3. **Device Differentiation**: Unique, device-specific data for each device type
-4. **Future Ready**: Easy addition of new device types with minimal code changes
-5. **Maintainability**: Clean, modular codebase with comprehensive documentation
-
-## Documentation Structure
-
-### **Core Documentation**
-- `PROJECT_OVERVIEW.md` - This comprehensive overview
-- `TECHNICAL_ARCHITECTURE.md` - Detailed technical specifications
-- `DEVICE_DISCOVERY_GUIDE.md` - Multi-device setup and configuration
-- `RENOGY_BT_INTEGRATION_PLAN.md` - Integration strategy and implementation
-
-### **Implementation Guides**
-- `IMPLEMENTATION_GUIDE.md` - Step-by-step implementation
-- `DEVELOPER_GUIDE.md` - Development standards and practices
-- `VERIFICATION_GUIDE.md` - Testing and validation procedures
-
-### **Troubleshooting**
-- `TROUBLESHOOTING.md` - Common issues and solutions
-- `BLUETOOTH_CONNECTION_GUIDE.md` - Bluetooth-specific troubleshooting
-
-## Key Principles
-
-1. **Quality Through Understanding**: Full comprehension before making changes
-2. **Modular Design**: Every component has its specific place and purpose
-3. **Device Type Respect**: Never mix data between different device types
-4. **Future-Ready**: Architecture supports easy expansion to new device types
-5. **Documentation First**: Comprehensive documentation for all components
-6. **Real Data Priority**: Always prefer real device communication over fallback data
-
-## Next Steps
-
-1. **Review and approve** the renogy-bt integration approach
-2. **Begin Phase 1 implementation** with dependency integration
-3. **Set up development environment** for testing with real devices
-4. **Create backup** of current working system before major changes
-
-**ETHOS REMINDER**: Quality through understanding. Every component has its place. Document thoroughly without clutter. Full comprehension before action.
+1. **Stability**: The gateway runs reliably without impacting Home Assistant's performance.
+2. **Extensibility**: New devices can be added with minimal, isolated code changes.
+3. **Usability**: The device discovery and addition process is simple and intuitive for the end-user.
+4. **Reliability**: Data from devices is polled accurately and consistently.
+5. **Maintainability**: The codebase remains clean, modular, and well-documented.
 
 ---
 
 <p align="center">
-  <strong>🚀 Welcome to the BluPow Revolution!</strong><br/>
-  <em>Transform your energy monitoring experience today</em>
-</p>
-
----
-
-*This overview represents years of development, breakthrough innovations, and community collaboration. BluPow continues to evolve as the definitive Bluetooth power monitoring solution for Home Assistant.* 
+  <strong>🚀 Welcome to the BluPow Project!</strong><br/>
+  <em>A universal bridge for your Bluetooth devices.</em>
+</p> 

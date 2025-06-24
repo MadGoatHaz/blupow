@@ -23,4 +23,50 @@ This is the one and only workflow to be used for this project.
 
 ## 3. This Document is Immutable
 
-These rules are permanent. They must be reviewed at the start of every development session. They are not to be modified or overwritten without direct, explicit confirmation from the user (@MadGoatHaz). 
+These rules are permanent. They must be reviewed at the start of every development session. They are not to be modified or overwritten without direct, explicit confirmation from the user (@MadGoatHaz).
+
+## The 3-Step "Fix-It" Workflow
+
+When an AI is tasked with fixing a bug or implementing a change, the following 3-step workflow is **mandatory**.
+
+1.  **Plan & Rationale:** Before making changes, clearly state what you intend to do and why. Reference specific log messages, error codes, or documentation that justifies your plan.
+2.  **Execute:** Make the code changes using the available tools.
+3.  **Verify:** After the change is applied, you **MUST** verify its success.
+    *   For the Home Assistant component, this means restarting the `homeassistant` container.
+    *   **Crucially**, after any file modification and before verification, you must `sleep 1` to allow for file system latency. Failure to do this will lead to incorrect conclusions.
+    *   After the restart and sleep, check the logs to confirm the original error is gone and no new errors have been introduced.
+    *   **UI Verification**: If a change could in *any way* affect the UI (e.g., changing `config_flow.py`), you must check `strings.json` and `translations/en.json` to ensure all keys, titles, and descriptions are present and correct. A functional change with a broken UI is a failed change.
+    *   Only after you have personally verified the fix should you report success to the user.
+
+## The Ratchet Protocol: Preventing Regression
+
+To prevent repeating solved problems, a "ratchet" mechanism for knowledge is mandatory.
+
+1.  **Document Critical Discoveries:** When a non-obvious solution is found for a critical problem (e.g., specific Docker networking configurations, non-standard library usage, environmental workarounds), it **must** be documented.
+2.  **State the "Why":** The documentation should not just state the fix, but *why* it was necessary and what symptoms it solved. This provides context for future developers.
+3.  **Update This Document:** This `MAINTAINER_RULES.md` file is the primary location for these discoveries. Add a new section or update an existing one as needed.
+
+## AI Capabilities
+
+The AI developer assigned to this project has the following capabilities that should be leveraged:
+
+*   **Web Search:** The AI can search the internet for information, such as library documentation, solutions to common errors, and best practices. It should be used to inform solutions.
+*   **Quality Standards:** All work should strive to meet the standards outlined in the [Home Assistant Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/).
+
+## Protocol V: UI and Text
+- **ALL UI Changes Require Translation Updates:** Any change to the Home Assistant UI, especially within `config_flow.py`, that introduces or modifies strings visible to the user **MUST** be accompanied by corresponding updates to `custom_components/blupow/strings.json` and `custom_components/blupow/translations/en.json`.
+- **No Blank Text:** The developer is responsible for ensuring no UI screens ever show blank or missing text. This is a critical failure. Verification of UI text is a mandatory step before submitting any change.
+- **Comprehensive Diagnosis:** Do not stop after finding and fixing a single error. One error often masks another. A complete diagnosis requires verifying the entire workflow (e.g., from UI click to gateway response and back to UI) to ensure the root cause and any subsequent failures are all resolved before declaring a fix. Assume there is another bug.
+
+## Protocol VI: Verification
+- Any changes to device communication MUST be accompanied by a new diagnostic script in `/scripts/diagnostics`.
+
+---
+
+## The Ratchet Protocol: Preventing Regression
+
+To prevent repeating solved problems, a "ratchet" mechanism for knowledge is mandatory.
+
+1.  **Document Critical Discoveries:** When a non-obvious solution is found for a critical problem (e.g., specific Docker networking configurations, non-standard library usage, environmental workarounds), it **must** be documented.
+2.  **State the "Why":** The documentation should not just state the fix, but *why* it was necessary and what symptoms it solved. This provides context for future developers.
+3.  **Update This Document:** This `MAINTAINER_RULES.md` file is the primary location for these discoveries. Add a new section or update an existing one as needed. 

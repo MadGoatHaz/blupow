@@ -2,9 +2,10 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional
 
 import paho.mqtt.client as mqtt
+from bleak import BleakScanner
 
 # Eagerly import device classes
 from app.devices.renogy_controller import RenogyController
@@ -14,6 +15,7 @@ from app.devices.base import BaseDevice
 
 # --- Constants ---
 GATEWAY_VERSION = "1.0.0"
+CONFIG_FILE_PATH = os.getenv("CONFIG_FILE_PATH", "/app/config/devices.json")
 
 # --- Logging Setup ---
 logging.basicConfig(
@@ -28,15 +30,50 @@ MQTT_CLIENT: Optional[mqtt.Client] = None
 DEVICES: Dict[str, BaseDevice] = {}
 POLLING_TASKS: Dict[str, asyncio.Task] = {}
 POLLING_INTERVAL = int(os.getenv("POLLING_INTERVAL_SECONDS", 30))
-# --- TEMPORARY FIX ---
-# Hardcoding the broker host to troubleshoot environment variable issues.
-MQTT_BROKER_HOST = "blupow-mosquitto"
+MQTT_BROKER_HOST = os.getenv("MQTT_BROKER_HOST", "blupow-mosquitto")
 MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_USER = os.getenv("MQTT_USER")
 MQTT_PASS = os.getenv("MQTT_PASS")
 DISCOVERY_PREFIX = "homeassistant"
+BLE_LOCK = asyncio.Lock()
 
 # --- Device Management ---
+
+def load_devices_from_config() -> Dict[str, BaseDevice]:
+    """Loads device configurations from the JSON config file."""
+    if not os.path.exists(CONFIG_FILE_PATH):
+        _LOGGER.info("Config file not found. Starting with no devices.")
+        return {}
+    try:
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            configs = json.load(f)
+        
+        loaded_devices = {}
+        for address, config in configs.items():
+            try:
+                device = create_device(config)
+                loaded_devices[address.upper()] = device
+                _LOGGER.info(f"Successfully loaded device from config: {address}")
+            except ValueError as e:
+                _LOGGER.error(f"Failed to create device for address {address} from config: {e}")
+        return loaded_devices
+    except (json.JSONDecodeError, IOError) as e:
+        _LOGGER.exception(f"Failed to read or parse config file at {CONFIG_FILE_PATH}")
+        return {}
+
+def save_devices_to_config():
+    """Saves the current device configurations to the JSON config file."""
+    configs = {
+        address: dev.get_config()
+        for address, dev in DEVICES.items()
+    }
+    try:
+        os.makedirs(os.path.dirname(CONFIG_FILE_PATH), exist_ok=True)
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            json.dump(configs, f, indent=2)
+        _LOGGER.info(f"Successfully saved {len(configs)} device(s) to {CONFIG_FILE_PATH}")
+    except IOError:
+        _LOGGER.exception(f"Failed to write to config file at {CONFIG_FILE_PATH}")
 
 def create_device(config: Dict[str, Any]) -> BaseDevice:
     """Factory function to create device instances."""
@@ -64,15 +101,16 @@ async def start_polling_device(device: BaseDevice):
     async def polling_loop():
         while True:
             _LOGGER.info(f"Polling device: {address}")
-            try:
-                data = await device.poll()
-                if data and MQTT_CLIENT:
-                    state_topic = f"blupow/{device.mac_address}/state"
-                    MQTT_CLIENT.publish(state_topic, json.dumps(data))
-                elif not data:
-                    _LOGGER.warning(f"No data received from poll for device {address}")
-            except Exception:
-                _LOGGER.exception(f"Unhandled exception while polling {address}")
+            async with BLE_LOCK:
+                try:
+                    data = await device.poll()
+                    if data and MQTT_CLIENT:
+                        state_topic = f"blupow/{device.mac_address}/state"
+                        MQTT_CLIENT.publish(state_topic, json.dumps(data))
+                    elif not data:
+                        _LOGGER.warning(f"No data received from poll for device {address}")
+                except Exception:
+                    _LOGGER.exception(f"Unhandled exception while polling {address}")
             
             await asyncio.sleep(POLLING_INTERVAL)
 
@@ -98,7 +136,7 @@ def publish_mqtt_discovery(device: BaseDevice):
     if not MQTT_CLIENT: return
     mac_safe = device.mac_address.replace(":", "")
     for sensor in device.get_sensor_definitions():
-        sensor_id = sensor["id"]
+        sensor_id = sensor["key"]
         unique_id = f"blupow_{mac_safe}_{sensor_id}"
         topic_path = f"{DISCOVERY_PREFIX}/sensor/{unique_id}/config"
         state_topic = f"blupow/{device.mac_address}/state"
@@ -119,7 +157,10 @@ def publish_mqtt_discovery(device: BaseDevice):
         MQTT_CLIENT.publish(topic_path, json.dumps(payload), retain=True)
 
 async def on_mqtt_message(client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage):
-    """Callback for MQTT messages."""
+    """
+    Coroutine to handle incoming MQTT messages.
+    This MUST be scheduled to run on the main event loop.
+    """
     try:
         payload_str = msg.payload.decode()
         if not payload_str:
@@ -131,73 +172,73 @@ async def on_mqtt_message(client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMess
         address = data.get("address", "").upper()
         request_id = data.get("request_id")
 
-        if command == "add_device":
-            _LOGGER.info(f"Processing add_device command for {address} (Request ID: {request_id})")
-            if address in DEVICES:
-                _LOGGER.warning(f"Device {address} already exists. Ignoring.")
-                if request_id:
-                    client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "failure", "reason": "already_exists"}))
-                return
-            
-            device = create_device(data)
-            # Attempt to connect to verify the device is reachable
-            if await device.test_connection():
-                DEVICES[address] = device
-                publish_mqtt_discovery(device)
-                await start_polling_device(device)
-                if request_id:
-                    client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "success"}))
-            else:
-                _LOGGER.error(f"Failed to connect to device {address}. Not adding.")
-                if request_id:
-                    client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "failure", "reason": "cannot_connect"}))
-
-        elif command == "remove_device":
-            _LOGGER.info(f"Processing remove_device command for {address}")
-            if address in DEVICES:
-                stop_polling_device(address)
-                del DEVICES[address]
-                if request_id:
-                    client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "success"}))
-            else:
-                _LOGGER.warning(f"Attempted to remove non-existent device: {address}")
-                if request_id:
-                    client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "failure", "reason": "not_found"}))
-
-        elif command == "get_devices":
-            _LOGGER.info(f"Processing get_devices command (Request ID: {request_id})")
-            device_list = [
-                {"address": dev.mac_address, "type": dev.device_type, "name": dev.get_device_name()}
-                for dev in DEVICES.values()
-            ]
-            if request_id and MQTT_CLIENT:
-                response_topic = f"blupow/gateway/response/{request_id}"
-                MQTT_CLIENT.publish(response_topic, json.dumps({"status": "success", "devices": device_list}))
-
-        elif command == "discover_devices":
-            _LOGGER.info(f"Processing discover_devices command (Request ID: {request_id})")
-            try:
-                from bleak import BleakScanner
-                _LOGGER.info("Starting BLE device scan...")
-                discovered_devices = await BleakScanner.discover(timeout=10.0)
-                _LOGGER.info(f"Scan complete. Found {len(discovered_devices)} devices.")
+        async with BLE_LOCK:  # Acquire lock for all BLE-interacting commands
+            if command == "add_device":
+                _LOGGER.info(f"Processing add_device command for {address} (Request ID: {request_id})")
+                if address in DEVICES:
+                    _LOGGER.warning(f"Device {address} already exists. Ignoring.")
+                    if request_id:
+                        client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "failure", "reason": "already_exists"}))
+                    return
                 
-                # Filter for devices that might be Renogy/BluPow
-                potential_devices = [
-                    {"name": dev.name, "address": dev.address}
-                    for dev in discovered_devices
-                    if dev.name and ("renogy" in dev.name.lower() or "bt-" in dev.name.lower())
+                device = create_device(data)
+                if await device.test_connection():
+                    DEVICES[address] = device
+                    save_devices_to_config()
+                    publish_mqtt_discovery(device)
+                    await start_polling_device(device) # This will start the next poll after a delay
+                    if request_id:
+                        client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "success"}))
+                else:
+                    _LOGGER.error(f"Failed to connect to device {address}. Not adding.")
+                    if request_id:
+                        client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "failure", "reason": "cannot_connect"}))
+
+            elif command == "remove_device":
+                _LOGGER.info(f"Processing remove_device command for {address}")
+                if address in DEVICES:
+                    stop_polling_device(address)
+                    del DEVICES[address]
+                    save_devices_to_config()
+                    if request_id:
+                        client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "success"}))
+                else:
+                    _LOGGER.warning(f"Attempted to remove non-existent device: {address}")
+                    if request_id:
+                        client.publish(f"blupow/gateway/response/{request_id}", json.dumps({"status": "failure", "reason": "not_found"}))
+
+            elif command == "get_devices":
+                _LOGGER.info(f"Processing get_devices command (Request ID: {request_id})")
+                device_list = [
+                    {"address": dev.mac_address, "type": dev.device_type, "name": dev.get_device_name()}
+                    for dev in DEVICES.values()
                 ]
-                
                 if request_id and MQTT_CLIENT:
                     response_topic = f"blupow/gateway/response/{request_id}"
-                    MQTT_CLIENT.publish(response_topic, json.dumps({"status": "success", "devices": potential_devices}))
+                    MQTT_CLIENT.publish(response_topic, json.dumps({"status": "success", "devices": device_list}))
 
-            except Exception as e:
-                _LOGGER.exception("An error occurred during device discovery.")
-                if request_id and MQTT_CLIENT:
-                    response_topic = f"blupow/gateway/response/{request_id}"
-                    MQTT_CLIENT.publish(response_topic, json.dumps({"status": "failure", "reason": str(e)}))
+            elif command == "discover_devices":
+                _LOGGER.info(f"Processing discover_devices command (Request ID: {request_id})")
+                try:
+                    _LOGGER.info("Starting BLE device scan...")
+                    discovered_devices = await BleakScanner.discover(timeout=10.0)
+                    _LOGGER.info(f"Scan complete. Found {len(discovered_devices)} devices.")
+                    
+                    potential_devices = [
+                        {"name": dev.name or "Unknown", "address": dev.address}
+                        for dev in discovered_devices
+                        if dev.address.upper() not in DEVICES
+                    ]
+                    
+                    if request_id:
+                        response_topic = f"blupow/gateway/response/{request_id}"
+                        client.publish(response_topic, json.dumps({"status": "success", "devices": potential_devices}))
+
+                except Exception as e:
+                    _LOGGER.exception("An error occurred during device discovery.")
+                    if request_id:
+                        response_topic = f"blupow/gateway/response/{request_id}"
+                        client.publish(response_topic, json.dumps({"status": "failure", "reason": str(e)}))
 
     except json.JSONDecodeError:
         _LOGGER.warning(f"Received invalid JSON on MQTT topic {msg.topic}. Payload: {msg.payload.decode()}")
@@ -209,61 +250,65 @@ def setup_mqtt_client(loop: asyncio.AbstractEventLoop) -> mqtt.Client:
     client = mqtt.Client(client_id="blupow_gateway", protocol=mqtt.MQTTv311)
     if MQTT_USER and MQTT_PASS:
         client.username_pw_set(MQTT_USER, MQTT_PASS)
-    
+
     def on_mqtt_message_sync(client, userdata, msg):
-        """A sync wrapper to schedule the async message handler."""
+        """A synchronous callback that safely schedules the async handler."""
+        _LOGGER.debug(f"Received raw MQTT message on topic {msg.topic}")
         asyncio.run_coroutine_threadsafe(on_mqtt_message(client, userdata, msg), loop)
 
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
             _LOGGER.info("Successfully connected to MQTT broker.")
             client.subscribe("blupow/gateway/command")
-            # Also subscribe to the status topic to republish devices on HA restart
-            client.subscribe("homeassistant/status")
         else:
-            _LOGGER.error(f"Failed to connect to MQTT broker, code {rc}")
+            _LOGGER.error(f"Failed to connect to MQTT broker, return code {rc}")
 
     client.on_connect = on_connect
-    # Use the sync wrapper for the Paho MQTT client
-    client.on_message = on_mqtt_message_sync
+    client.on_message = on_mqtt_message_sync # Use the threadsafe sync wrapper
 
-    client.connect(MQTT_BROKER_HOST, MQTT_PORT, 60)
+    try:
+        client.connect(MQTT_BROKER_HOST, MQTT_PORT, 60)
+    except ConnectionRefusedError:
+        _LOGGER.error("Failed to connect to MQTT. Gateway cannot start.")
+        raise
+    except Exception:
+        _LOGGER.exception("An unexpected error occurred during MQTT connection.")
+        raise
+        
     return client
-
-# --- Main Application ---
 
 async def main():
     """Main application entry point."""
     _LOGGER.info("--- BluPow Gateway Starting Up ---")
-    global MQTT_CLIENT
     
     main_loop = asyncio.get_running_loop()
-
-    try:
-        MQTT_CLIENT = setup_mqtt_client(main_loop)
-        MQTT_CLIENT.loop_start()
-    except Exception as e:
-        _LOGGER.exception("Failed to connect to MQTT. Gateway cannot start.")
-        return
-
-    # Publish gateway online status
-    status_payload = {"state": "online", "version": GATEWAY_VERSION}
-    MQTT_CLIENT.publish("blupow/gateway/status", json.dumps(status_payload), retain=True)
-    _LOGGER.info("Gateway is online and waiting for commands.")
     
-    # Keep the gateway running indefinitely
+    global DEVICES, MQTT_CLIENT
+    DEVICES = load_devices_from_config()
+    MQTT_CLIENT = setup_mqtt_client(main_loop)
+    
+    # After connecting, publish discovery for all known devices
+    for device in DEVICES.values():
+        publish_mqtt_discovery(device)
+        await start_polling_device(device)
+        
+    MQTT_CLIENT.loop_start()
+    _LOGGER.info("Gateway is online and waiting for commands.")
+
     try:
-        while True:
-            await asyncio.sleep(3600) # Sleep for an hour
-    except asyncio.CancelledError:
-        _LOGGER.info("Main task cancelled.")
+        # Keep the main async task running indefinitely
+        await asyncio.Event().wait()
+    finally:
+        _LOGGER.info("--- BluPow Gateway Shutting Down ---")
+        MQTT_CLIENT.loop_stop()
+        for task in POLLING_TASKS.values():
+            task.cancel()
+        await asyncio.gather(*POLLING_TASKS.values(), return_exceptions=True)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        _LOGGER.info("--- BluPow Gateway Shutting Down ---")
-    finally:
-        if MQTT_CLIENT:
-            MQTT_CLIENT.loop_stop()
-        _LOGGER.info("Shutdown complete.")
+        _LOGGER.info("Gateway manually interrupted.")
+    except Exception:
+        _LOGGER.exception("Gateway runtime error.") 

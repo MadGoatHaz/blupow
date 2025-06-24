@@ -1,21 +1,23 @@
 version: '3.7'
+
 services:
-  mosquitto:
-    image: eclipse-mosquitto:latest
-    ports:
-      - "1884:1883"
-    volumes:
-      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
-  
   gateway:
     build:
-      context: .. 
+      context: ..
       dockerfile: Dockerfile
-    depends_on:
-      - mosquitto
     environment:
-      - MQTT_BROKER_HOST=mosquitto
+      - MQTT_BROKER_HOST=localhost
+      - MQTT_PORT=1883
       - POLLING_INTERVAL_SECONDS=5
       - CONFIG_FILE_PATH=/app/config/devices.test.json
     volumes:
-      - ./config:/app/config 
+      - ../app:/app/app
+      - ./config:/app/config
+      - /var/run/dbus:/var/run/dbus
+    network_mode: "host"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  blupow-net:
+    driver: bridge 

@@ -1,6 +1,39 @@
 # BluPow Quick Start Guide
 
-This guide provides the fastest path to getting the BluPow integration up and running. It assumes you have a working Home Assistant setup with Docker and an MQTT broker.
+This guide provides the fastest path to getting the BluPow integration up and running.
+
+---
+
+## 🚨 Core Environment Commands 🚨
+
+**This is the single source of truth for managing the development environment.** All services are defined in a `docker-compose.yml` file located in the `~/opt/` directory, **one level above the project's git repository root.**
+
+You **MUST** use these commands from the `~/opt/` directory to manage the lifecycle of the Home Assistant and BluPow Gateway containers.
+
+### Start or Restart Environment
+This is the standard command to bring up all services in a clean, detached state.
+```bash
+# From the ~/opt/ directory
+docker compose up -d --build
+```
+
+### Stop Environment
+This stops and removes all running containers defined in the compose file.
+```bash
+# From the ~/opt/ directory
+docker compose down
+```
+
+### View Logs
+To see the logs for a specific service (e.g., Home Assistant or the gateway):
+```bash
+# For Home Assistant
+docker compose logs -f homeassistant
+
+# For the BluPow Gateway
+docker compose logs -f blupow-gateway
+```
+---
 
 ### Step 1: Run the BluPow Gateway
 

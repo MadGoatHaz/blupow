@@ -4,7 +4,6 @@ from typing import Any, Dict, Optional, List
 from bleak import BleakClient, BleakScanner
 from bleak.exc import BleakError
 import logging
-from datetime import datetime, timedelta
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,8 +19,6 @@ class BaseDevice(ABC):
         self._address = address.upper()
         self._device_type = device_type
         self._client: Optional[BleakClient] = None
-        self._client_last_used: datetime = datetime.min
-        self.CONNECTION_CACHE_SECONDS = 60 # Cache connection for 60 seconds
 
     @property
     def mac_address(self) -> str:
@@ -33,33 +30,37 @@ class BaseDevice(ABC):
         """The type of the device."""
         return self._device_type
 
-    async def _get_bleak_client(self) -> BleakClient:
-        """Get a cached or new BleakClient."""
-        if self._client and self._client.is_connected and \
-           (datetime.now() - self._client_last_used) < timedelta(seconds=self.CONNECTION_CACHE_SECONDS):
-            _LOGGER.debug(f"[{self.mac_address}] Reusing cached BLE connection.")
-            self._client_last_used = datetime.now()
-            return self._client
-
-        # If client is old or disconnected, create a new one
-        await self._disconnect() # Ensure old client is cleaned up
-        _LOGGER.info(f"[{self.mac_address}] Establishing new BLE connection.")
-        device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
-        if not device:
-            raise BleakError(f"Device {self.mac_address} not found")
+    async def connect(self, retries=3, delay=2) -> bool:
+        """Establish a connection to the device with retries."""
+        for attempt in range(retries):
+            try:
+                if self._client and self._client.is_connected:
+                    _LOGGER.debug(f"[{self.mac_address}] Already connected.")
+                    return True
+                
+                _LOGGER.info(f"[{self.mac_address}] Attempting to connect (Attempt {attempt + 1}/{retries})...")
+                device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
+                if not device:
+                    _LOGGER.warning(f"[{self.mac_address}] Device not found during scan.")
+                    raise BleakError(f"Device {self.mac_address} not found")
+                
+                self._client = BleakClient(device)
+                await self._client.connect()
+                _LOGGER.info(f"[{self.mac_address}] Connection successful.")
+                return True
+            except BleakError as e:
+                _LOGGER.error(f"[{self.mac_address}] Connection attempt {attempt + 1} failed: {e}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(delay)
         
-        self._client = BleakClient(device)
-        assert self._client is not None # Satisfy the linter
-        await self._client.connect()
-        self._client_last_used = datetime.now()
-        _LOGGER.info(f"[{self.mac_address}] New connection established.")
-        return self._client
+        _LOGGER.error(f"[{self.mac_address}] All connection attempts failed.")
+        return False
     
-    async def _disconnect(self):
+    async def disconnect(self):
         """Disconnect the BleakClient if it's connected."""
         if self._client and self._client.is_connected:
             await self._client.disconnect()
-            _LOGGER.info(f"[{self.mac_address}] Connection released.")
+            _LOGGER.info(f"[{self.mac_address}] Disconnected.")
         self._client = None
 
     @abstractmethod
@@ -86,6 +87,13 @@ class BaseDevice(ABC):
     def get_device_name(self) -> str:
         """Return a user-friendly name for the device."""
         return f"{self.device_type.replace('_', ' ').title()} ({self.mac_address[-5:]})"
+
+    def get_config(self) -> Dict[str, Any]:
+        """Return the serializable configuration for the device."""
+        return {
+            "address": self.mac_address,
+            "type": self.device_type,
+        }
 
     def get_device_info(self) -> Dict[str, Any]:
         """

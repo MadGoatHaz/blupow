@@ -13,24 +13,24 @@ _LOGGER = logging.getLogger(__name__)
 
 # Constants
 RENOGY_INVERTER_SENSORS = [
-    {'id': 'input_voltage', 'name': 'AC Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-    {'id': 'input_current', 'name': 'AC Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-    {'id': 'output_voltage', 'name': 'AC Output Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-    {'id': 'output_current', 'name': 'AC Output Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-    {'id': 'output_frequency', 'name': 'AC Frequency', 'metadata': {'unit_of_measurement': 'Hz', 'device_class': 'frequency'}},
-    {'id': 'battery_voltage', 'name': 'Battery Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-    {'id': 'battery_percentage', 'name': 'Battery SOC', 'metadata': {'unit_of_measurement': '%', 'device_class': 'battery'}},
-    {'id': 'temperature', 'name': 'Inverter Temperature', 'metadata': {'unit_of_measurement': '°C', 'device_class': 'temperature'}},
-    {'id': 'load_active_power', 'name': 'AC Load Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power', 'state_class': 'measurement'}},
-    {'id': 'load_apparent_power', 'name': 'AC Apparent Power', 'metadata': {'unit_of_measurement': 'VA'}},
-    {'id': 'load_percentage', 'name': 'Load Percentage', 'metadata': {'unit_of_measurement': '%'}},
-    {'id': 'charging_current', 'name': 'Charging Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-    {'id': 'charging_status', 'name': 'Charging Status'},
-    {'id': 'solar_voltage', 'name': 'Solar Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-    {'id': 'solar_current', 'name': 'Solar Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-    {'id': 'solar_power', 'name': 'Solar Input Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power', 'state_class': 'measurement'}},
-    {'id': 'model', 'name': 'Inverter Model'},
-    {'id': 'device_id', 'name': 'Device ID'}
+    {'key': 'input_voltage', 'name': 'AC Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage', 'state_class': 'measurement'}},
+    {'key': 'input_current', 'name': 'AC Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current', 'state_class': 'measurement'}},
+    {'key': 'output_voltage', 'name': 'AC Output Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage', 'state_class': 'measurement'}},
+    {'key': 'output_current', 'name': 'AC Output Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current', 'state_class': 'measurement'}},
+    {'key': 'output_frequency', 'name': 'AC Frequency', 'metadata': {'unit_of_measurement': 'Hz', 'device_class': 'frequency', 'state_class': 'measurement'}},
+    {'key': 'battery_voltage', 'name': 'Battery Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage', 'state_class': 'measurement'}},
+    {'key': 'battery_percentage', 'name': 'Battery SOC', 'metadata': {'unit_of_measurement': '%', 'device_class': 'battery', 'state_class': 'measurement'}},
+    {'key': 'temperature', 'name': 'Inverter Temperature', 'metadata': {'unit_of_measurement': '°C', 'device_class': 'temperature', 'state_class': 'measurement'}},
+    {'key': 'load_active_power', 'name': 'AC Load Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power', 'state_class': 'measurement'}},
+    {'key': 'load_apparent_power', 'name': 'AC Apparent Power', 'metadata': {'unit_of_measurement': 'VA', 'device_class': 'apparent_power', 'state_class': 'measurement'}},
+    {'key': 'load_percentage', 'name': 'Load Percentage', 'metadata': {'unit_of_measurement': '%', 'state_class': 'measurement'}},
+    {'key': 'charging_current', 'name': 'Charging Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current', 'state_class': 'measurement'}},
+    {'key': 'charging_status', 'name': 'Charging Status'},
+    {'key': 'solar_voltage', 'name': 'Solar Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage', 'state_class': 'measurement'}},
+    {'key': 'solar_current', 'name': 'Solar Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current', 'state_class': 'measurement'}},
+    {'key': 'solar_power', 'name': 'Solar Input Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power', 'state_class': 'measurement'}},
+    {'key': 'model', 'name': 'Inverter Model'},
+    {'key': 'device_id', 'name': 'Device ID'}
 ]
 
 def crc16(data: bytes) -> bytes:
@@ -135,30 +135,36 @@ class RenogyInverter(BaseDevice):
         and returns the combined state.
         """
         all_data = {}
+        if not await self.connect():
+            _LOGGER.error(f"Could not connect to {self.mac_address} for polling.")
+            return None
+        
         try:
-            client = await self._get_bleak_client()
+            assert self._client is not None # Should be connected
+            client = self._client
             
-            notification_future: asyncio.Future[bytearray] = asyncio.Future()
+            response_queue: asyncio.Queue[bytearray] = asyncio.Queue()
 
             def notification_handler(sender: BleakGATTCharacteristic, data: bytearray):
-                if not notification_future.done():
-                    notification_future.set_result(data)
+                response_queue.put_nowait(data)
 
             await client.start_notify(self.notify_uuid, notification_handler)
 
             async def read_register(register: int, words: int) -> Optional[bytes]:
-                nonlocal notification_future
                 # Frame: Device ID (1) + Func Code (1) + Register (2) + Words (2)
                 command = struct.pack('>BBHH', self.device_id, 3, register, words)
                 command_with_crc = command + crc16(command)
                 
-                notification_future = asyncio.Future()
+                # Clear queue before sending command
+                while not response_queue.empty():
+                    response_queue.get_nowait()
+
                 _LOGGER.debug(f"Sending command to {self.mac_address}: {command_with_crc.hex()}")
                 await client.write_gatt_char(self.write_uuid, command_with_crc)
                 
                 try:
                     # Wait for the notification with a timeout
-                    response = await asyncio.wait_for(notification_future, timeout=5.0)
+                    response = await asyncio.wait_for(response_queue.get(), timeout=5.0)
                     _LOGGER.debug(f"Received response from {self.mac_address}: {response.hex()}")
                     
                     # Basic validation: Device ID, func code, and CRC
@@ -197,22 +203,16 @@ class RenogyInverter(BaseDevice):
             
         except BleakError as e:
             _LOGGER.error(f"Bluetooth error while polling {self.mac_address}: {e}")
-            await self._disconnect() # Force disconnect on bleak error
-            return None
-        except Exception as e:
-            _LOGGER.exception(f"An unexpected error occurred while polling {self.mac_address}: {e}")
-            return None
+            all_data = None # Invalidate data on error
+        finally:
+            await self.disconnect()
             
-        return all_data 
+        return all_data
 
     async def test_connection(self) -> bool:
-        """Test the BLE connection to the inverter."""
-        _LOGGER.info(f"Testing connection to Renogy Inverter at {self.mac_address}")
-        try:
-            async with BleakClient(self.mac_address, timeout=10.0) as client:
-                is_connected = await client.is_connected()
-                _LOGGER.info(f"Connection test result for {self.mac_address}: {is_connected}")
-                return is_connected
-        except BleakError as e:
-            _LOGGER.error(f"Connection test failed for {self.mac_address}: {e}")
-            return False 
+        """Tests the connection to the device."""
+        _LOGGER.info(f"Testing connection to {self.mac_address}")
+        is_connected = await self.connect()
+        if is_connected:
+            await self.disconnect()
+        return is_connected 

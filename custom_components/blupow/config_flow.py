@@ -1,245 +1,201 @@
 """Config flow for BluPow."""
-from __future__ import annotations
-import logging
-from typing import Any, Dict, Optional
-import voluptuous as vol
-import json
 import asyncio
+import json
+import logging
 import uuid
-from contextlib import asynccontextmanager
+from typing import Any
 
-from homeassistant.config_entries import (
-    ConfigEntry,
-    ConfigFlow,
-    CONN_CLASS_LOCAL_PUSH,
-    OptionsFlow,
-)
-from homeassistant.const import CONF_ADDRESS, CONF_NAME, CONF_TYPE
-from homeassistant.core import callback, HomeAssistant
+import voluptuous as vol
+
+from homeassistant.components import mqtt
+from homeassistant.components.mqtt.models import ReceiveMessage
+from homeassistant.config_entries import ConfigFlow, OptionsFlow, ConfigEntry
+from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectOptionDict,
+)
 
 from .const import DOMAIN, DEVICE_TYPES
 
-from homeassistant.components import mqtt
-from homeassistant.components.mqtt import MQTTMessage
-
 _LOGGER = logging.getLogger(__name__)
-GATEWAY_COMMAND_TOPIC = "blupow/gateway/command"
-GATEWAY_RESPONSE_TOPIC_BASE = "blupow/gateway/response"
 
-
-@asynccontextmanager
-async def gateway_request(hass: HomeAssistant, command: str, payload: Optional[Dict] = None, timeout: int = 10):
-    """A context manager to send a request to the gateway and await a response."""
-    request_id = str(uuid.uuid4())
-    response_topic = f"{GATEWAY_RESPONSE_TOPIC_BASE}/{request_id}"
-    response_received = asyncio.Event()
-    response_payload = {"status": "failure", "reason": "timeout"}
-
-    @callback
-    def on_message(msg: MQTTMessage):
-        """Handle the one-time response message."""
-        try:
-            nonlocal response_payload
-            response_payload = json.loads(msg.payload)
-        except json.JSONDecodeError:
-            response_payload = {"status": "failure", "reason": "invalid_json"}
-        finally:
-            response_received.set()
-
-    unsubscribe = await mqtt.async_subscribe(hass, response_topic, on_message, qos=0)
-
-    try:
-        command_payload = payload or {}
-        command_payload["command"] = command
-        command_payload["request_id"] = request_id
-        await mqtt.async_publish(hass, GATEWAY_COMMAND_TOPIC, json.dumps(command_payload))
-
-        try:
-            await asyncio.wait_for(response_received.wait(), timeout)
-        except asyncio.TimeoutError:
-            _LOGGER.warning(f"Timeout waiting for gateway response for command '{command}' (Req ID: {request_id})")
-            # response_payload is already set to timeout
-        
-        yield response_payload
-
-    finally:
-        unsubscribe()
+# MQTT Topics
+COMMAND_TOPIC = "blupow/gateway/command"
+RESPONSE_TOPIC_TEMPLATE = "blupow/gateway/response/{request_id}"
 
 
 class BluPowConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle the configuration flow for BluPow."""
+    """Handle a config flow for BluPow."""
+
     VERSION = 1
-    CONNECTION_CLASS = CONN_CLASS_LOCAL_PUSH
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Handle the initial user step."""
+        """Handle the initial step."""
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
-
-        # Create a single placeholder entry. All devices will be managed via this one entry's options flow.
-        return self.async_create_entry(title="BluPow", data={})
+        return self.async_create_entry(title="BluPow Gateway", data={})
 
     @staticmethod
     @callback
-    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+    def async_get_options_flow(config_entry: ConfigEntry):
         """Get the options flow for this handler."""
         return BluPowOptionsFlowHandler(config_entry)
 
 
 class BluPowOptionsFlowHandler(OptionsFlow):
-    """Handles the options flow for managing BluPow devices."""
+    """Handle BluPow options."""
 
-    def __init__(self, config_entry: ConfigEntry):
-        self.config_entry = config_entry
-        self.discovered_devices: list[dict] = []
-        self.device_info: Optional[Dict[str, Any]] = None
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.discovered_devices: list[dict[str, Any]] = []
+        self.selected_device: dict[str, Any] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Show the main menu for device management."""
+        """Manage the options."""
         return self.async_show_menu(
-            step_id="init", menu_options=["discover", "manual", "remove"]
+            step_id="init",
+            menu_options=["discover_devices"],
         )
 
-    # --- Discovery Flow ---
-    async def async_step_discover(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Step to trigger discovery and show results."""
-        return await self.async_step_discover_wait()
+    async def async_step_discover_devices(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle device discovery using MQTT."""
+        request_id = uuid.uuid4().hex
+        response_topic = RESPONSE_TOPIC_TEMPLATE.format(request_id=request_id)
+        response_queue = asyncio.Queue()
 
-    async def async_step_discover_wait(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Wait for discovery results from the gateway."""
-        _LOGGER.info("Starting device discovery")
-        try:
-            async with gateway_request(self.hass, "discover_devices") as result:
-                if result.get("status") == "success":
-                    self.discovered_devices = result.get("devices", [])
-                    _LOGGER.info(f"Discovery successful, found {len(self.discovered_devices)} devices.")
-                    return await self.async_step_select_discovered_device()
+        @callback
+        def on_message(msg: ReceiveMessage):
+            """Handle incoming MQTT message."""
+            _LOGGER.debug(f"Received discovery response on {msg.topic}: {msg.payload}")
+            try:
+                response = json.loads(msg.payload)
+                if response.get("status") == "success":
+                    response_queue.put_nowait(response.get("devices", []))
                 else:
-                    _LOGGER.error(f"Discovery failed in gateway: {result.get('reason', 'unknown')}")
-                    return self.async_abort(reason="discovery_failed")
-        except Exception:
-            _LOGGER.exception("Exception during discovery.")
-            return self.async_abort(reason="discovery_exception")
+                    _LOGGER.error(f"Gateway discovery failed: {response.get('reason')}")
+                    response_queue.put_nowait(None)
+            except json.JSONDecodeError:
+                _LOGGER.error(f"Failed to decode JSON from discovery response: {msg.payload}")
+                response_queue.put_nowait(None)
 
-    async def async_step_select_discovered_device(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Allow the user to select a device from the discovered list."""
-        if not self.discovered_devices:
+        # Subscribe to the response topic
+        unsubscribe = await mqtt.async_subscribe(self.hass, response_topic, on_message, 1)
+
+        try:
+            # Publish the discovery request
+            discovery_payload = {"command": "discover_devices", "request_id": request_id}
+            await mqtt.async_publish(self.hass, COMMAND_TOPIC, json.dumps(discovery_payload))
+
+            _LOGGER.info("Waiting for discovered devices from the gateway...")
+            # Wait for the response from the queue with a timeout
+            devices = await asyncio.wait_for(response_queue.get(), timeout=15.0)
+
+        except asyncio.TimeoutError:
+            _LOGGER.error("Timeout waiting for gateway discovery response.")
+            return self.async_abort(reason="discovery_timeout")
+        except Exception as e:
+            _LOGGER.error(f"An unexpected error occurred during discovery: {e}")
+            return self.async_abort(reason="unknown_error")
+        finally:
+            # Always unsubscribe
+            unsubscribe()
+
+        if not devices:
             return self.async_abort(reason="no_devices_found")
 
-        if user_input is not None:
-            address = user_input[CONF_ADDRESS]
-            # Find the full device info from the discovered list
-            self.device_info = next((d for d in self.discovered_devices if d["address"] == address), None)
-            if self.device_info:
-                return await self.async_step_add_device()
-            # If device not found (shouldn't happen), abort.
-            return self.async_abort(reason="unknown_error")
+        self.discovered_devices = devices
+        return await self.async_step_select_discovered_device()
 
-        device_options = {
-            device["address"]: f"{device.get('name', 'Unknown')} ({device['address']})"
-            for device in self.discovered_devices
-        }
+    async def async_step_select_discovered_device(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle selection of a discovered device."""
+        if user_input is not None:
+            address = user_input["selected_device"]
+            device_info = next((d for d in self.discovered_devices if d["address"] == address), None)
+            if not device_info:
+                return self.async_abort(reason="device_not_found")
+            
+            self.selected_device = device_info
+            return await self.async_step_set_device_type()
+
+        device_choices = [
+            SelectOptionDict(value=dev["address"], label=f"{dev.get('name', 'Unknown')} ({dev['address']})")
+            for dev in self.discovered_devices
+        ]
 
         return self.async_show_form(
             step_id="select_discovered_device",
-            data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(device_options)}),
-            description_placeholders={"device_count": len(self.discovered_devices)},
-            last_step=False,
+            data_schema=vol.Schema({
+                vol.Required("selected_device"): SelectSelector(
+                    SelectSelectorConfig(options=device_choices)
+                ),
+            }),
         )
 
-    # --- Manual Add Flow ---
-    async def async_step_manual(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Allow manual entry of a device."""
-        errors: Dict[str, str] = {}
+    async def async_step_set_device_type(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Ask the user for the type of the selected device."""
         if user_input is not None:
-            self.device_info = user_input
-            return await self.async_step_add_device()
+            device_config = self.selected_device.copy()
+            device_config["type"] = user_input["device_type"]
+            
+            if await self._async_add_device_to_gateway(device_config):
+                return self.async_create_entry(title="", data={})
+            return self.async_abort(reason="add_device_failed")
 
-        schema = {
-            vol.Required(CONF_ADDRESS): str,
-            vol.Required(CONF_TYPE): vol.In(DEVICE_TYPES),
-            vol.Optional(CONF_NAME): str,
-        }
-        return self.async_show_form(step_id="manual", data_schema=vol.Schema(schema))
-
-    # --- Shared Add Logic ---
-    async def async_step_add_device(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Shared logic to add a device via the gateway."""
-        errors: Dict[str, str] = {}
-        
-        if self.device_info is None:
-            return self.async_abort(reason="unknown_error")
-        
-        try:
-            payload = {
-                "address": self.device_info[CONF_ADDRESS],
-                "type": self.device_info.get(CONF_TYPE, "renogy_inverter"), # Default for discovered devices
-                "name": self.device_info.get(CONF_NAME),
-            }
-            async with gateway_request(self.hass, "add_device", payload) as result:
-                if result.get("status") == "success":
-                    return self.async_create_entry(title="", data={}) # Finishes the options flow
-                
-                reason = result.get('reason', 'add_failed')
-                _LOGGER.error(f"Failed to add device {payload['address']}: {reason}")
-                if reason == 'already_exists':
-                     errors["base"] = "device_already_configured"
-                else:
-                     errors["base"] = "add_failed"
-
-        except Exception:
-            _LOGGER.exception("Exception while adding device.")
-            errors["base"] = "add_exception"
-        
-        # If we are here, it means adding failed. We need to show the form again.
-        # Let's determine which flow we came from to show the correct form.
-        # For simplicity now, we'll just abort with a generic message.
-        # A more advanced implementation would re-show the form with an error.
-        return self.async_abort(reason=errors.get("base", "add_failed"))
-
-    # --- Remove Flow ---
-    async def async_step_remove(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Fetch the list of devices that can be removed."""
-        _LOGGER.debug("Attempting to fetch devices for removal")
-        try:
-            async with gateway_request(self.hass, "get_devices") as result:
-                if result.get("status") == "success":
-                    self.discovered_devices = result.get("devices", [])
-                    if not self.discovered_devices:
-                        return self.async_abort(reason="no_devices_configured")
-                    return await self.async_step_select_device_to_remove()
-                else:
-                    _LOGGER.error(f"get_devices failed: {result.get('reason')}")
-                    return self.async_abort(reason="get_devices_failed")
-        except Exception:
-            _LOGGER.exception("Exception during get_devices call.")
-            return self.async_abort(reason="get_devices_failed")
-
-    async def async_step_select_device_to_remove(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Show the list of devices and handle removal."""
-        if user_input is not None:
-            address_to_remove = user_input[CONF_ADDRESS]
-            payload = {"address": address_to_remove}
-            try:
-                async with gateway_request(self.hass, "remove_device", payload) as result:
-                    if result.get("status") == "success":
-                        return self.async_create_entry(title="", data={}) # Finish the flow
-                    else:
-                        _LOGGER.error(f"Failed to remove device: {result.get('reason')}")
-                        return self.async_abort(reason="remove_failed")
-            except Exception:
-                _LOGGER.exception("Exception calling remove_device.")
-                return self.async_abort(reason="remove_failed")
-
-        device_options = {
-            device["address"]: f"{device.get('name', 'Unknown')} ({device['address']})"
-            for device in self.discovered_devices
-        }
+        device_type_options = [
+            SelectOptionDict(value=key, label=key.replace("_", " ").title())
+            for key in DEVICE_TYPES
+        ]
 
         return self.async_show_form(
-            step_id="select_device_to_remove",
-            data_schema=vol.Schema({vol.Required(CONF_ADDRESS): vol.In(device_options)}),
-            description_placeholders={"device_count": len(device_options)}
+            step_id="set_device_type",
+            description_placeholders={"device_name": self.selected_device.get("name", self.selected_device["address"])},
+            data_schema=vol.Schema({
+                vol.Required("device_type"): SelectSelector(
+                    SelectSelectorConfig(options=device_type_options)
+                ),
+            })
         )
+
+    async def _async_add_device_to_gateway(self, device_config: dict[str, Any]) -> bool:
+        """Send an 'add_device' command to the gateway and wait for status."""
+        request_id = uuid.uuid4().hex
+        response_topic = RESPONSE_TOPIC_TEMPLATE.format(request_id=request_id)
+        response_queue = asyncio.Queue()
+
+        @callback
+        def on_message(msg: ReceiveMessage):
+            try:
+                response = json.loads(msg.payload)
+                response_queue.put_nowait(response.get("status") == "success")
+            except json.JSONDecodeError:
+                response_queue.put_nowait(False)
+
+        unsubscribe = await mqtt.async_subscribe(self.hass, response_topic, on_message, 1)
+
+        try:
+            payload = {"command": "add_device", "request_id": request_id, **device_config}
+            await mqtt.async_publish(self.hass, COMMAND_TOPIC, json.dumps(payload))
+            
+            _LOGGER.info(f"Waiting for gateway to add device {device_config.get('address')}...")
+            return await asyncio.wait_for(response_queue.get(), timeout=10.0)
+
+        except asyncio.TimeoutError:
+            _LOGGER.error("Timeout waiting for gateway response to add_device command.")
+            return False
+        except Exception as e:
+            _LOGGER.error(f"An unexpected error occurred while adding device: {e}")
+            return False
+        finally:
+            unsubscribe()
+
+    async def async_step_add_device_manually(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Adding a device manually is not supported through this flow."""
+        return self.async_abort(reason="not_implemented")
+
+    async def async_step_remove_device(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Removing a device is not supported through this flow."""
+        return self.async_abort(reason="not_implemented")
 

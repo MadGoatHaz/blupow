@@ -1,6 +1,6 @@
 <div align="center">
 
-# BluPow - Renogy Device Integration for Home Assistant
+# BluPow - A Universal Bluetooth Device Integration for Home Assistant
 
 </div>
 
@@ -14,7 +14,7 @@
 [![Project Maintenance][maintenance-shield]][maintenance-url]
 [![GitHub Sponsors][sponsors-shield]][sponsors]
 
-**A professional Home Assistant integration for Renogy devices.**
+**A professional Home Assistant integration for bringing BLE devices into your smart home.**
 
 </div>
 
@@ -24,15 +24,15 @@
 
 ## Key Features
 
--   **Robust Communication**: A dedicated gateway handles all Bluetooth Low Energy (BLE) communication, providing a stable and reliable connection to your devices.
--   **Modern Architecture**: The gateway is a standalone Docker container that communicates with Home Assistant via MQTT, ensuring HA stability.
+-   **Universal BLE Support**: A dedicated gateway handles all Bluetooth Low Energy (BLE) communication, providing a stable and reliable connection to your devices.
+-   **Modern, Decoupled Architecture**: The gateway is a standalone Docker container that communicates with Home Assistant via MQTT, ensuring HA stability is never compromised by Bluetooth issues.
 -   **MQTT Discovery**: Uses Home Assistant's native MQTT discovery for seamless and automatic entity creation.
--   **UI-Driven Configuration**: Add and remove your Renogy devices directly from the Home Assistant UI. No more manual YAML or JSON file editing!
--   **Extensible**: The driver-based architecture makes it easy to add support for new Modbus-over-BLE devices.
--   **Supports**:
+-   **UI-Driven Configuration**: Add and remove your BLE devices directly from the Home Assistant UI.
+-   **Extensible by Design**: The driver-based architecture makes it easy to add support for new Modbus-over-BLE devices or other Bluetooth peripherals.
+-   **Currently Supported**:
     -   Renogy Charge Controllers (e.g., Rover series)
     -   Renogy Inverters
-    -   Can be extended to other generic Modbus devices.
+    -   Can be extended to other generic Modbus and BLE devices.
 
 ---
 
@@ -40,10 +40,10 @@
 
 This integration uses a modern, decoupled architecture to ensure stability and performance. It consists of two main parts:
 
-1.  **The BluPow Gateway (`blupow_gateway`)**: A Python application, designed to be run as a Docker container. It connects directly to your Renogy devices via Bluetooth, polls them for data, and publishes the data to an MQTT broker. It also listens for commands from Home Assistant (e.g., to add/remove devices).
-2.  **The Home Assistant Integration (`custom_components/blupow`)**: A lightweight "branding" integration that runs inside Home Assistant. It provides the UI configuration flow for adding devices and relies on MQTT Discovery to automatically create all the sensors.
+1.  **The BluPow Gateway (`blupow_gateway`)**: A Python application, designed to be run as a Docker container. It connects directly to your Bluetooth devices, polls them for data, and publishes the data to an MQTT broker. It also listens for commands from Home Assistant (e.g., to add/remove devices).
+2.  **The Home Assistant Integration (`custom_components/blupow`)**: A lightweight "branding" integration that runs inside Home Assistant. It provides the UI configuration flow for discovering and adding devices, and relies on MQTT Discovery to automatically create all the sensors.
 
-This separation means that the often-unstable Bluetooth communication is handled outside of Home Assistant, preventing integration crashes from impacting your HA instance.
+This separation means that potentially unstable Bluetooth communication is handled outside of Home Assistant, preventing integration crashes from impacting your HA instance.
 
 ---
 
@@ -53,7 +53,7 @@ Setup requires a running MQTT broker and Docker.
 
 1.  **Prerequisites**:
     *   An MQTT Broker (like the official Mosquitto addon) must be installed and running in Home Assistant.
-    *   Docker and Docker Compose must be installed on a machine that has a working Bluetooth adapter and is within range of your Renogy devices. This can be the same machine as Home Assistant OS.
+    *   Docker and Docker Compose must be installed on a machine that has a working Bluetooth adapter and is within range of your BLE devices. This can be the same machine as Home Assistant OS.
 
 2.  **Run the Gateway**:
     *   Clone this repository to the machine that will run the gateway.
@@ -73,7 +73,8 @@ Setup requires a running MQTT broker and Docker.
 
 4.  **Add Your Devices**:
     *   Once the BluPow integration is added, click **"Configure"** on the integration card.
-    *   You will be prompted to enter the Bluetooth MAC Address and select the device type for your Renogy device.
+    *   Use the "Discover New Devices" feature. The gateway will scan for nearby, advertisings BLE devices.
+    *   Select your device from the list, provide any necessary details (like the device type), and add it.
     *   The gateway will then automatically discover and publish the device and its sensors to Home Assistant.
 
 ---
@@ -81,9 +82,9 @@ Setup requires a running MQTT broker and Docker.
 ## Troubleshooting
 
 -   **Sensors are "Unknown"**:
-    *   Check the gateway logs: `docker logs blupow_gateway-gateway-1`. Look for Bluetooth connection errors or other issues.
+    *   Check the gateway logs: `docker logs blupow-gateway-1`. Look for Bluetooth connection errors or other issues.
     *   Use an MQTT exploration tool (like MQTT Explorer) to connect to your broker. Verify that topics under `homeassistant/sensor/blupow_...` are being created and that `blupow/.../state` topics are receiving data.
--   **Device not found during polling?** Ensure your Renogy device is powered on and within Bluetooth range of the machine running the gateway.
+-   **Device not found during discovery?** Ensure your device is powered on, advertising, and within Bluetooth range of the machine running the gateway. The discovery scan is not overly filtered and should find any standard BLE device with a broadcast name.
 
 ---
 
