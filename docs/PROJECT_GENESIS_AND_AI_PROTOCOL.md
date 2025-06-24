@@ -30,6 +30,7 @@ This section documents key failures from past sessions. Understanding them is cr
 | **`config_flow.py` Instability** | A custom `GatewayClient` class was implemented with its own `asyncio` logic. | This caused `AttributeError` and event loop conflicts. The refactor to use Home Assistant's native MQTT helpers (`mqtt.async_publish`, `mqtt.async_subscribe`) is the stable, correct pattern. **Do not re-introduce a custom client.** |
 | **`README.md` Overwrite** | Replacing the user-and-sponsor-focused `README.md` with a developer-focused one. | The main `README.md` is for the project's public face. Do not remove sponsorship, support, or user-facing installation information. Verify its content before editing. |
 | **Hardcoded "Fake" Data** | Diagnostic scripts contained a hardcoded MAC address. | This created massive confusion during testing. All hardcoded test data has been removed and should not be reintroduced. |
+| **`git commit` Failure** | Using a multi-line commit message with special characters directly on the command line. | The shell can misinterpret special characters and newlines. For complex commit messages, wrap the entire message in single quotes (`'`) to ensure it is treated as a single string. |
 
 ---
 
