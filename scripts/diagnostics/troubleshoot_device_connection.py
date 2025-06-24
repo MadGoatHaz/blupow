@@ -6,11 +6,18 @@ import asyncio
 import sys
 import struct
 from pathlib import Path
+import os
+from typing import Optional, List
+from bleak import BleakScanner, BleakClient
 
 # Add the custom_components directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "blupow"))
 
 from blupow_client import BluPowClient
+
+# --- Configuration ---
+# Use an environment variable for the target device, or a placeholder
+TARGET_DEVICE_ADDRESS = os.environ.get("BLUPOW_TEST_MAC")
 
 async def test_different_commands(mac_address):
     """Test different Renogy commands to find what works for this device"""
@@ -92,8 +99,6 @@ async def test_device_discovery(mac_address):
     print(f"\n🔍 Testing device discovery for: {mac_address}")
     
     try:
-        from bleak import BleakClient, BleakScanner
-        
         print("1. Scanning for device...")
         devices = await BleakScanner.discover(timeout=10.0)
         
@@ -129,55 +134,28 @@ async def test_device_discovery(mac_address):
         print(f"❌ Discovery failed: {e}")
         return False
 
+async def troubleshoot_connection(target_address: Optional[str]):
+    """Main function."""
+    if not target_address:
+        print("❌ ERROR: Please set the BLUPOW_TEST_MAC environment variable.")
+        print("   Example: export BLUPOW_TEST_MAC='AA:BB:CC:DD:EE:FF'")
+        return
+
+    print("--- BluPow Connection Troubleshooter ---")
+    await test_different_commands(target_address)
+    print("--------------------------------------")
+
 async def main():
-    """Main troubleshooting function"""
-    problem_device = "D8:B6:73:BF:4F:75"
-    working_device = "C4:D3:6A:66:7E:D4"
-    
-    print("🔧 BluPow Device Connection Troubleshoot")
-    print("=" * 50)
-    
-    print(f"Problem device: {problem_device}")
-    print(f"Working device: {working_device}")
-    
-    # Test the working device first to confirm our approach
-    print("\n" + "=" * 50)
-    print("🧪 Testing WORKING device first...")
-    working_result = await test_different_commands(working_device)
-    
-    if working_result:
-        cmd, desc, data = working_result
-        print(f"\n✅ Working device uses: {desc}")
-        print(f"   Command: {cmd.hex()}")
-    else:
-        print("\n⚠️ Even the working device failed - check Bluetooth")
-        
-    # Now test the problem device
-    print("\n" + "=" * 50)
-    print("🔧 Testing PROBLEM device...")
-    
-    # First do basic discovery
-    discovery_ok = await test_device_discovery(problem_device)
-    
-    if discovery_ok:
-        # Try different commands
-        problem_result = await test_different_commands(problem_device)
-        
-        if problem_result:
-            cmd, desc, data = problem_result
-            print(f"\n🎯 SOLUTION FOUND!")
-            print(f"Problem device needs: {desc}")
-            print(f"Command: {cmd.hex()}")
-            
-            # Suggest the fix
-            print(f"\n🔧 TO FIX:")
-            print(f"Update the command in blupow_client.py read_device_info() method:")
-            print(f"Replace: bytes([0xFF, 0x03, 0x01, 0x00, 0x00, 0x22, 0xD1, 0xF1])")
-            print(f"With: {cmd}")
-            
-        else:
-            print(f"\n❌ No working command found for problem device")
-            print("This device may need a different protocol or be in a different mode")
+    """Main function."""
+    if not TARGET_DEVICE_ADDRESS:
+        print("❌ ERROR: Please set the BLUPOW_TEST_MAC environment variable.")
+        print("   Example: export BLUPOW_TEST_MAC='AA:BB:CC:DD:EE:FF'")
+        return
+
+    print("--- BluPow Connection Troubleshooter ---")
+    await troubleshoot_connection(TARGET_DEVICE_ADDRESS)
+    print("--------------------------------------")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main()) 

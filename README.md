@@ -90,8 +90,7 @@ Setup requires a running MQTT broker and Docker.
 ## Support
 
 ### Documentation
-- **[Installation Guide](docs/INSTALLATION.md)** - Detailed setup instructions.
-- **[Project Blueprint](docs/PROJECT_BLUEPRINT.md)** - The architectural vision and development roadmap.
+- **[Project Genesis and AI Protocol](docs/PROJECT_GENESIS_AND_AI_PROTOCOL.md)** - The single source of truth for architecture, workflow, and AI/developer onboarding. **START HERE.**
 - **[Contributing Guide](docs/CONTRIBUTING.md)** - Development and contribution guidelines.
 
 ### Getting Help

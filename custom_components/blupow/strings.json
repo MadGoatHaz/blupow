@@ -2,44 +2,124 @@
   "config": {
     "step": {
       "user": {
-        "title": "Select your BluPow Device",
-        "description": "Choose your Renogy device from the list of discovered Bluetooth devices and specify its type.",
-        "data": {
-          "address": "Device",
-          "device_type": "Device Type"
+        "title": "Set Up BluPow Gateway",
+        "menu_options": {
+          "discover": "Auto Discover Devices",
+          "manual": "Add Device Manually"
         }
       },
-      "discovery": {
-        "title": "Select Renogy Device",
-        "description": "Found {devices_found}. {recommendation}",
+      "discover": {
+        "title": "Select a Discovered Device",
         "data": {
-          "device": "Select Device"
+          "address": "Discovered Renogy Devices"
         }
       },
-      "discovery_failed": {
-        "title": "Device Discovery Failed",
-        "description": "No Renogy devices were found. {troubleshooting}",
-        "data": {}
+      "device_type": {
+        "title": "Select Device Type",
+        "description": "Please select the correct type for the device at `{address}`.",
+        "data": {
+          "type": "Device Type"
+        }
+      },
+      "manual": {
+        "title": "Manually Add a Device",
+        "description": "Enter the Bluetooth MAC Address and select the device type.",
+        "data": {
+          "address": "Bluetooth MAC Address (e.g., AA:BB:CC:DD:EE:FF)",
+          "type": "Device Type"
+        }
+      },
+      "no_devices_found": {
+        "title": "No Devices Found",
+        "description": "The initial scan did not find any compatible Renogy devices. Please ensure your device is powered on and not connected to another application.",
+        "menu_options": {
+          "discover": "Scan Again",
+          "manual": "Add Device Manually"
+        }
       }
     },
     "error": {
-      "invalid_address": "Invalid MAC address format. Use format: AA:BB:CC:DD:EE:FF",
-      "no_devices_found": "No Renogy devices found during discovery",
-      "discovery_failed": "Device discovery failed: {error}",
-      "cannot_connect": "Failed to connect to device",
-      "unknown": "Unexpected error occurred"
+      "no_devices_found": "No new Renogy devices were found nearby. Please ensure your device is powered on and in range. You can try scanning again or add the device manually.",
+      "cannot_connect": "Could not connect to the device. Please ensure it is powered on, in range, and not connected to another app.",
+      "already_exists": "This device is already configured in the gateway.",
+      "timeout": "The gateway did not respond in time. It may be offline or restarting.",
+      "unknown_error": "An unknown error occurred while adding the device."
     },
     "abort": {
-      "already_configured": "Device with this MAC address is already configured.",
-      "no_devices_found": "No new, unconfigured BluPow/Renogy devices were found nearby. Please ensure your device is powered on and in range of your Home Assistant's Bluetooth adapter. If you have already configured all your devices, you can close this dialog."
+      "single_instance_allowed": "Only one BluPow Gateway integration is allowed. To manage devices, go to the existing BluPow integration in your dashboard and click 'CONFIGURE'.",
+      "ble_scan_failed": "The Bluetooth scan failed. Please ensure Bluetooth is properly configured and enabled on your Home Assistant host."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "BluPow Options",
-        "description": "There are currently no options to configure for this integration."
+        "title": "BluPow Device Management",
+        "menu_options": {
+          "discover": "Discover New Devices",
+          "manual": "Add a Device Manually",
+          "remove": "Remove a Device"
+        }
+      },
+      "discover": {
+        "title": "Discover Devices"
+      },
+      "select_discovered_device": {
+        "title": "Select Discovered Device",
+        "description": "Found {device_count} new device(s). Please select one to add.",
+        "data": {
+          "address": "Device"
+        }
+      },
+      "discover_failed": {
+        "title": "Discovery Failed",
+        "description": "The gateway failed to scan for devices. Please check the gateway logs and try again.",
+        "menu_options": {
+          "discover": "Scan Again"
+        }
+      },
+      "no_devices_found": {
+        "title": "No New Devices Found",
+        "menu_options": {
+          "discover": "Scan Again"
+        }
+      },
+      "manual": {
+        "title": "Manually Add Device",
+        "description": "Enter the Bluetooth MAC Address and select the device type.",
+        "data": {
+          "address": "Bluetooth MAC Address (e.g., AA:BB:CC:DD:EE:FF)",
+          "type": "Device Type",
+          "name": "Name (Optional)"
+        }
+      },
+      "remove": {
+        "title": "Remove Device"
+      },
+      "select_device_to_remove": {
+        "title": "Select Device to Remove",
+        "description": "Found {device_count} configured device(s). Please select one to remove.",
+        "data": {
+          "address": "Configured Device"
+        }
       }
+    },
+    "error": {
+      "not_implemented": "This feature is not yet implemented."
+    },
+    "abort": {
+      "discovery_failed": "The gateway failed to respond during discovery. Please check the gateway logs and try again.",
+      "discovery_exception": "An unexpected error occurred during discovery. Please check the Home Assistant logs for details.",
+      "no_devices_found": "No new BluPow compatible devices were found. Please ensure your device is powered on, in range, and not connected to another app, then try scanning again.",
+      "unknown_error": "An unknown error occurred. Please check the logs.",
+      "device_already_configured": "This device has already been added.",
+      "add_failed": "The gateway reported it was unable to add the device. Check the gateway logs for more information.",
+      "add_exception": "An unexpected error occurred while adding the device. Please check the Home Assistant logs for details.",
+      "not_implemented": "This feature is not yet implemented.",
+      "device_added": "Device added successfully!",
+      "no_devices_configured": "There are no configured devices to remove.",
+      "get_devices_failed": "Failed to retrieve the list of configured devices from the gateway.",
+      "remove_failed": "The gateway failed to remove the device. Please check the gateway logs.",
+      "device_removed": "Device removed successfully!"
     }
   },
   "title": "BluPow"

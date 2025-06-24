@@ -149,4 +149,16 @@ class RenogyController(BaseDevice):
 
     def _parse_battery_type(self, bs: bytes) -> Dict[str, Any]:
         battery_type_map = {1: 'open', 2: 'sealed', 3: 'gel', 4: 'lithium', 5: 'custom'}
-        return {'battery_type': battery_type_map.get(int(_bytes_to_int(bs, 3, 2)), 'unknown')} 
+        return {'battery_type': battery_type_map.get(int(_bytes_to_int(bs, 3, 2)), 'unknown')}
+
+    async def test_connection(self) -> bool:
+        """Test the BLE connection to the controller."""
+        _LOGGER.info(f"Testing connection to Renogy Controller at {self.mac_address}")
+        try:
+            async with BleakClient(self.mac_address, timeout=10.0) as client:
+                is_connected = await client.is_connected()
+                _LOGGER.info(f"Connection test result for {self.mac_address}: {is_connected}")
+                return is_connected
+        except BleakError as e:
+            _LOGGER.error(f"Connection test failed for {self.mac_address}: {e}")
+            return False 

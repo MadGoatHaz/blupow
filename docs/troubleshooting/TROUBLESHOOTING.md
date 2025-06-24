@@ -1,60 +1,99 @@
-# BluPow Integration - Troubleshooting Guide
+# BluPow Troubleshooting Guide
 
-This guide helps you resolve common issues with the BluPow integration. The integration code itself is stable and production-ready; most issues that arise are related to the Bluetooth connection between your Home Assistant device and the Renogy inverter.
+This guide is the definitive resource for diagnosing and resolving issues with the BluPow integration.
 
-## ✅ Step 1: Run the Verification Script
+## Is It the Integration or the Connection?
 
-Before anything else, run the `verify_connection.py` script. It's the fastest way to diagnose your connection status.
+**The most common source of issues is the Bluetooth (BLE) connection between the host machine and the device, NOT the integration code itself.** The BluPow integration is designed to be stable and handle connection errors gracefully. If your sensors show as "Unknown" or "Unavailable" in Home Assistant, it is almost always a symptom of an underlying connectivity problem.
+
+---
+
+## 🛠️ Step 1: Run the End-to-End Verification Script
+
+Before anything else, run the `verify_connection.py` script from the project's root directory. This script bypasses Home Assistant and attempts to connect directly to your device. It is the single fastest way to diagnose your connection status.
 
 ```bash
-# From the project root directory
-python3 scripts/verify_connection.py
+python3 scripts/diagnostics/verify_connection.py
 ```
-The script's output will tell you if you have a connection problem or if the issue lies elsewhere.
 
-## 🚨 Common Problem: Connection Failures
+*   **If this script succeeds:** You will see a printout of your device's live data. This means the hardware and BLE connection are working. The issue is likely with Home Assistant's configuration or the MQTT broker.
+*   **If this script fails:** The problem is with the Bluetooth connection itself. Proceed to the troubleshooting steps below.
 
-If the verification script fails, you'll likely see one of these errors:
-- `Failed to connect to the inverter.`
-- `Connected to the inverter, but failed to read data.`
-- `Error ESP_GATT_CONN_FAIL_ESTABLISH` in Home Assistant logs.
+---
 
-**Translation:** Your Home Assistant machine can see the inverter, but the inverter is refusing the connection.
+## 🚨 Problem: Connection Failures & "Unavailable" Sensors
 
-### The Most Common Cause
-The Renogy inverter's Bluetooth module often enters a deep sleep mode after a period of inactivity and won't accept new connections until it's reset.
+If the verification script fails or your sensors are unavailable in Home Assistant, work through these solutions in order.
 
-### The Solution (90% Success Rate)
-A hard reset of the inverter will almost always solve this issue.
-1.  **Power Down:** Completely power off the Renogy RIV1230RCH-SPS inverter.
-2.  **Wait:** Leave it powered off for at least 60 seconds to ensure all capacitors are discharged.
-3.  **Power Up:** Turn the inverter back on.
-4.  **Wait Again:** Allow 2 minutes for the inverter's systems and Bluetooth module to fully initialize.
-5.  **Re-run Verification:** Execute `python3 scripts/verify_connection.py` again.
+### Solution 1: The Inverter Power Cycle (90% Success Rate)
 
-## 📊 Symptom: Sensors Show "Unavailable" in Home Assistant
+Renogy devices, especially inverters, can enter a deep sleep state where their Bluetooth module becomes unresponsive. A hard reset is the most common fix.
 
-This is the **expected and correct behavior** when Home Assistant cannot retrieve data from the inverter. It means the BluPow integration is working perfectly and handling the connection issue gracefully.
+1.  **Power Down**: Completely power off the device.
+2.  **Wait**: Leave it off for at least 60 seconds to ensure a full reset.
+3.  **Power Up**: Turn the device back on.
+4.  **Wait Again**: Allow 2 minutes for the device's systems to fully initialize before attempting to connect.
+5.  **Re-run Verification**: Execute the verification script again.
 
-**Do not try to "fix" the integration.** The solution is to fix the underlying Bluetooth connection by following the steps above. Once `verify_connection.py` succeeds, your sensors will automatically start populating in Home Assistant.
+### Solution 2: Container & Host Bluetooth Issues
 
-## 🛠️ Advanced Troubleshooting
+If the gateway is running in a Docker container, security policies (like AppArmor) are the next most common cause of connection failure.
 
-If a power cycle doesn't resolve the issue, consult the **[Bluetooth Connection Guide](BLUETOOTH_CONNECTION_GUIDE.md)** for more advanced steps, including:
-- Checking for competing Bluetooth connections (e.g., the Renogy app on a phone).
-- Verifying Bluetooth signal strength and range.
-- Using system-level tools to debug the Bluetooth adapter.
+#### How to Diagnose
+Check your logs for specific permission denied errors.
+
+```bash
+# Check Home Assistant logs for D-Bus errors
+docker logs homeassistant | grep -i "dbus"
+
+# Check system logs for AppArmor denials
+sudo dmesg | grep -i "apparmor" | grep -i "denied"
+```
+If you see errors like `[org.freedesktop.DBus.Error.AccessDenied]` or `apparmor="DENIED"`, you have a container security issue.
+
+#### How to Fix (Choose One)
+
+These solutions modify the `docker-compose.yml` file for your Home Assistant container.
+
+1.  **Privileged Mode (Easy, Less Secure)**: Gives the container full access to all host devices.
+    ```yaml
+    services:
+      homeassistant:
+        # ...
+        privileged: true
+        network_mode: host
+        volumes:
+          - /path/to/your/config:/config
+          - /run/dbus:/run/dbus:ro
+    ```
+2.  **Specific Device Access (Recommended Balance)**: Grants access only to the necessary Bluetooth hardware.
+    ```yaml
+    services:
+      homeassistant:
+        # ...
+        network_mode: host
+        cap_add:
+          - NET_ADMIN
+          - NET_RAW
+        devices:
+          - /dev/hci0:/dev/hci0 # Verify path of your BT adapter
+        volumes:
+          - /path/to/your/config:/config
+          - /run/dbus:/run/dbus:ro
+    ```
+3.  **Custom AppArmor Profile (Most Secure)**: This involves creating a custom security profile to grant the container the exact permissions it needs. For full instructions, see the original guide content in the project's `git` history.
+
+After applying a fix, restart the container: `docker-compose up -d --force-recreate homeassistant`.
+
+### Solution 3: Check for Competing Connections
+Ensure your device is not actively connected to another application, such as the Renogy DC Home app on a phone or tablet. Bluetooth devices typically only allow one connection at a time.
+
+---
 
 ## 🏗️ Legacy Issue: `already_configured` Error
 
-**Status:** ✅ **RESOLVED**
+**Status**: ✅ **RESOLVED**
 
-In the past, you might have seen an `already_configured` error when trying to add the integration. This was caused by orphaned configuration entries during the project's "inverter discovery" phase.
-
-**Solution:** This has been permanently fixed. However, if you ever suspect an issue with your configuration, you can run the cleanup script.
-```bash
-# This is for historical reference and should not be needed now.
-python3 scripts/cleanup_integration.py
-```
+In past versions, an `already_configured` error could occur when adding the integration. This was caused by orphaned configuration entries. This has been permanently fixed in the current version and should no longer occur.
 
 By following this guide, you should be able to resolve most issues and get your 22 inverter sensors reporting live data into Home Assistant. 

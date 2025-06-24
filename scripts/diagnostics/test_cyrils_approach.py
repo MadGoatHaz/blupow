@@ -7,6 +7,7 @@ import asyncio
 import logging
 import sys
 import os
+from bleak import BleakScanner, BleakClient
 
 # Add the custom_components/blupow path directly
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'custom_components', 'blupow'))
@@ -17,18 +18,24 @@ from blupow_client import BluPowClient
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-async def test_cyrils_approach():
-    """Test the cyrils/renogy-bt polling approach"""
-    print("🚀 Testing BluPow with cyrils/renogy-bt approach")
-    print("=" * 60)
+# --- Configuration ---
+# Use an environment variable for the target device, or a placeholder
+TARGET_MACS_STR = os.environ.get("BLUPOW_TEST_MACS")
+
+# --- Test Logic ---
+async def main():
+    if not TARGET_MACS_STR:
+        print("❌ ERROR: Please set the BLUPOW_TEST_MACS environment variable.")
+        print("   It should be a comma-separated list of MAC addresses.")
+        print("   Example: export BLUPOW_TEST_MACS='AA:BB:CC:DD:EE:FF'")
+        return
+
+    target_devices = [{'mac': mac.strip(), 'name': f"Device {mac.strip()[-4:]}"} for mac in TARGET_MACS_STR.split(',')]
     
-    # Test devices
-    devices = [
-        {"mac": "D8:B6:73:BF:4F:75", "name": "RIV1230RCH-SPS Inverter"},
-        {"mac": "C4:D3:6A:66:7E:D4", "name": "RNG-CTRL-RVR40 Controller"}
-    ]
-    
-    for device in devices:
+    print("--- Cyril's BLE Connection Test ---")
+    print(f"Testing {len(target_devices)} device(s)...")
+
+    for device in target_devices:
         print(f"\n📱 Testing device: {device['name']} ({device['mac']})")
         print("-" * 50)
         
@@ -106,4 +113,4 @@ async def test_cyrils_approach():
     print("   3. Not connected to another device")
 
 if __name__ == "__main__":
-    asyncio.run(test_cyrils_approach()) 
+    asyncio.run(main()) 

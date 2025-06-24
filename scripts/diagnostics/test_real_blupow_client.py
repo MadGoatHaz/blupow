@@ -10,6 +10,8 @@ import sys
 import json
 from datetime import datetime
 from pathlib import Path
+import os
+from bleak import BleakScanner
 
 # Add the custom_components path
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "blupow"))
@@ -20,11 +22,31 @@ from blupow_client import BluPowClient
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Known devices from documentation
-TEST_DEVICES = {
-    "D8:B6:73:BF:4F:75": {"name": "RIV1230RCH-SPS Inverter", "type": "inverter"},
-    "C4:D3:6A:66:7E:D4": {"name": "RNG-CTRL-RVR40 Controller", "type": "controller"}
-}
+# --- Configuration ---
+# Use environment variables for target devices, or use a placeholder
+TARGET_MACS_STR = os.environ.get("BLUPOW_TEST_MACS")
+
+# --- Test Logic ---
+async def main():
+    if not TARGET_MACS_STR:
+        print("❌ ERROR: Please set the BLUPOW_TEST_MACS environment variable.")
+        print("   It should be a comma-separated list of MAC addresses.")
+        print("   Example: export BLUPOW_TEST_MACS='AA:BB:CC:DD:EE:FF,11:22:33:44:55:66'")
+        return
+
+    target_devices = {mac.strip(): {} for mac in TARGET_MACS_STR.split(',')}
+    # A simple way to assign types for testing, can be improved
+    for mac in target_devices:
+        target_devices[mac]['type'] = 'inverter' if len(mac) % 2 == 0 else 'controller'
+        target_devices[mac]['name'] = f"Test Device {mac[-4:]}"
+
+
+    print("--- Real BluPow Client Test ---")
+    print(f"Testing {len(target_devices)} device(s)...")
+
+    for mac, info in target_devices.items():
+        tester = BluPowClientTester()
+        await tester.test_device(mac, info)
 
 class BluPowClientTester:
     """Comprehensive tester for the BluPow client"""
@@ -110,7 +132,7 @@ class BluPowClientTester:
         
         start_time = datetime.now()
         
-        for mac_address, device_info in TEST_DEVICES.items():
+        for mac_address, device_info in TARGET_DEVICES.items():
             self.total_tests += 1
             result = await self.test_device(mac_address, device_info)
             self.test_results[mac_address] = result
@@ -169,11 +191,6 @@ class BluPowClientTester:
             }, f, indent=2)
             
         logger.info(f"📄 Detailed results saved to: {report_file}")
-
-async def main():
-    """Main test function"""
-    tester = BluPowClientTester()
-    await tester.run_comprehensive_test()
 
 if __name__ == "__main__":
     asyncio.run(main()) 

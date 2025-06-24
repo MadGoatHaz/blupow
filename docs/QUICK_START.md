@@ -1,6 +1,55 @@
-# ⚡ BluPow Quick Start Guide
+# BluPow Quick Start Guide
 
-Get your BluPow integration running in **less than 5 minutes**!
+This guide provides the fastest path to getting the BluPow integration up and running. It assumes you have a working Home Assistant setup with Docker and an MQTT broker.
+
+### Step 1: Run the BluPow Gateway
+
+Ensure the BluPow Gateway container is running and connected to your MQTT broker. Refer to the `docker-compose.yaml` file in the root of the project for the recommended setup.
+
+```yaml
+services:
+  blupow-gateway:
+    container_name: blupow-gateway
+    image: blupow-gateway:latest
+    restart: unless-stopped
+    privileged: true # Required for Bluetooth access
+    networks:
+      - blupow-net # Must be on the same network as your MQTT broker
+    volumes:
+      - /var/run/dbus:/var/run/dbus # For Bluetooth access
+    environment:
+      - MQTT_BROKER=blupow-mosquitto # Hostname of your MQTT broker
+      # ... other environment variables
+```
+
+### Step 2: Add the Integration in Home Assistant
+
+1.  If you have an old version of the BluPow integration, **delete it first** from **Settings > Devices & Services**.
+2.  Go to **Settings > Devices & Services**.
+3.  Click **+ ADD INTEGRATION**, search for "BluPow", and select it.
+
+### Step 3: Add a Device
+
+A menu will appear.
+
+#### To Auto Discover:
+
+1.  Select **Auto Discover Devices**.
+2.  The system will scan for 10 seconds.
+3.  Choose your device from the dropdown list.
+4.  Select the correct **Device Type** and submit.
+
+#### To Add Manually:
+
+1.  Select **Add Device Manually**.
+2.  Enter the **MAC Address** and select the **Device Type**.
+3.  Submit the form.
+
+### Step 4: Done!
+
+The BluPow integration is now configured. The gateway will automatically find the new device and publish its sensors to Home Assistant via MQTT Discovery. Your sensors should appear shortly.
+
+To manage devices later (add more or remove them), simply click **CONFIGURE** on the BluPow integration card.
 
 ---
 

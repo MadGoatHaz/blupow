@@ -83,6 +83,10 @@ class BaseDevice(ABC):
         """
         pass
 
+    def get_device_name(self) -> str:
+        """Return a user-friendly name for the device."""
+        return f"{self.device_type.replace('_', ' ').title()} ({self.mac_address[-5:]})"
+
     def get_device_info(self) -> Dict[str, Any]:
         """
         Return basic information about the device.
@@ -91,4 +95,9 @@ class BaseDevice(ABC):
         return {
             "address": self.mac_address,
             "type": self.device_type,
-        } 
+        }
+
+    @abstractmethod
+    async def test_connection(self) -> bool:
+        """Test the connection to the device."""
+        raise NotImplementedError 

@@ -11,6 +11,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
+import os
 
 # Add the custom_components path
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "blupow"))
@@ -21,16 +22,15 @@ from blupow_client import BluPowClient
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Test devices
-TEST_DEVICES = {
-    "D8:B6:73:BF:4F:75": {"name": "RIV1230RCH-SPS Inverter", "type": "inverter"},
-    "C4:D3:6A:66:7E:D4": {"name": "RNG-CTRL-RVR40 Controller", "type": "controller"}
-}
-
 class FinalVerificationTest:
     """Comprehensive verification test for the rebuilt BluPow integration"""
     
     def __init__(self):
+        self.mac_addresses = os.environ.get("BLUPOW_TEST_MACS")
+        if not self.mac_addresses:
+            raise ValueError("Please set the BLUPOW_TEST_MACS environment variable (comma-separated).")
+        
+        self.test_devices = self.mac_addresses.split(',')
         self.test_results = {}
         self.overall_success = True
         
@@ -175,7 +175,11 @@ class FinalVerificationTest:
         start_time = datetime.now()
         
         # Test each device
-        for mac_address, device_info in TEST_DEVICES.items():
+        for mac_address in self.test_devices:
+            device_info = {
+                "name": mac_address,
+                "type": "inverter" if len(mac_address) == 12 else "controller"
+            }
             device_result = await self.test_device_communication(mac_address, device_info)
             self.test_results[mac_address] = device_result
             

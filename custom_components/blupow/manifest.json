@@ -7,6 +7,7 @@
   "documentation": "https://github.com/your_repo/blupow/blob/main/README.md",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/your_repo/blupow/issues",
-  "version": "3.0.0"
+  "requirements": [],
+  "version": "3.2.0"
 }
 

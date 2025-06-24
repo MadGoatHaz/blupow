@@ -1,8 +1,35 @@
-# BluPow Multi-Device Discovery & Architecture Guide
+# BluPow Device Discovery
 
-## Overview
+Device discovery is a core feature of the BluPow integration, designed to make setup as simple as possible. This document explains how it works.
 
-BluPow integration supports multiple Renogy device types simultaneously, each with distinct data structures and polling methodologies. This guide explains how to properly identify, configure, and manage different device types in your Home Assistant setup.
+## Discovery within the User Interface
+
+The primary method for device discovery is handled directly within the Home Assistant user interface during the integration setup process.
+
+### How it Works:
+
+1.  When you add the BluPow integration for the first time, you are presented with a menu.
+2.  If you select **"Auto Discover Devices"**, the Home Assistant integration initiates a 10-second Bluetooth Low Energy (BLE) scan.
+3.  This scan looks for nearby devices that are broadcasting names commonly associated with Renogy products (e.g., containing "Renogy" or "BT-TH").
+4.  A list of these discovered devices is then presented to you in a dropdown menu.
+5.  When you select a device and confirm its type, the integration sends an `add_device` command to the BluPow Gateway via MQTT.
+
+This UI-driven approach provides immediate feedback and allows for a simple, one-click setup for most users.
+
+## MQTT Discovery
+
+The second type of discovery is **MQTT Discovery**, which is a Home Assistant standard. This is how sensor entities are automatically created.
+
+### How it Works:
+
+1.  After a device has been added to the BluPow Gateway (either through auto-discovery or manual entry in the UI), the gateway will connect to it and poll it for data.
+2.  The gateway then determines all the available sensors for that device based on its type.
+3.  For each sensor, the gateway publishes a special "config" message to a specific MQTT topic. For example:
+    `homeassistant/sensor/blupow_D8B673BF4F75_battery_voltage/config`
+4.  This config message is a JSON payload containing all the information Home Assistant needs to create the entity, such as its name (`Battery Voltage`), unit of measurement (`V`), device class (`voltage`), and the state topic to listen on for value updates.
+5.  Home Assistant's main MQTT integration is always listening for these messages. When it sees a new config payload, it automatically creates the corresponding sensor entity in the device registry.
+
+This process means that the `custom_components/blupow` integration **does not create any entities itself**. It only provides the UI to tell the gateway *what* to monitor. The gateway and the standard Home Assistant MQTT integration handle the rest.
 
 ## Supported Device Types
 

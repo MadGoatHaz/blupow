@@ -13,7 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 # The PLATFORMS list should be empty as we are no longer setting up a sensor platform.
 # Home Assistant's MQTT integration will handle sensor creation via discovery.
-PLATFORMS: list[Platform] = []
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

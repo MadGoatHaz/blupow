@@ -6,6 +6,7 @@ import asyncio
 import logging
 import sys
 import os
+from bleak import BleakScanner
 
 # Direct import of just the client
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'custom_components', 'blupow'))
@@ -13,10 +14,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'custom_compone
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-async def test_discovery():
-    """Simple discovery test"""
+# --- Configuration ---
+# Use environment variables for target devices, or use a placeholder
+TARGET_MACS_STR = os.environ.get("BLUPOW_TEST_MACS")
+
+# --- Main Logic ---
+async def main():
+    if not TARGET_MACS_STR:
+        print("❌ ERROR: Please set the BLUPOW_TEST_MACS environment variable.")
+        print("   It should be a comma-separated list of MAC addresses.")
+        print("   Example: export BLUPOW_TEST_MACS='AA:BB:CC:DD:EE:FF,11:22:33:44:55:66'")
+        return
+
+    target_devices = [mac.strip() for mac in TARGET_MACS_STR.split(',')]
+    print("--- Cyril's Simple BLE Device Scanner ---")
+    print(f"Looking for: {', '.join(target_devices)}")
+
     try:
-        from bleak import BleakScanner
         print("🔍 Scanning for Bluetooth devices...")
         devices = await BleakScanner.discover(timeout=10)
         print(f"Found {len(devices)} devices:")
@@ -25,7 +39,6 @@ async def test_discovery():
             print(f"  - {dev.name or 'Unknown'} ({dev.address})")
             
         # Look for our specific devices
-        target_devices = ["D8:B6:73:BF:4F:75", "C4:D3:6A:66:7E:D4"]
         found_devices = []
         
         for dev in devices:
@@ -46,4 +59,4 @@ async def test_discovery():
         print(f"Error during discovery: {e}")
 
 if __name__ == "__main__":
-    asyncio.run(test_discovery()) 
+    asyncio.run(main()) 

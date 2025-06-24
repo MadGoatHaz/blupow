@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
 set -e
 
-echo "--- BluPow Standalone Gateway Installer ---"
+echo "--- BluPow Gateway Smart Installer ---"
 echo ""
 
-# --- Phase 1: Choose Installation Type ---
-echo -e "🔧 How would you like to set up your MQTT broker?
-   \e[1m[1] Quick Install:\e[0m Let BluPow set up a new, dedicated Mosquitto MQTT broker. (Recommended)
-   \e[1m[2] Custom Install:\e[0m Connect to your own existing MQTT broker."
+# --- Phase 1: Smart MQTT Broker Detection ---
+echo "🔎 Checking for an existing BluPow MQTT broker..."
 
-read -p "Enter your choice [1/2]: " INSTALL_CHOICE
+MQTT_CONTAINER_ID=$(docker ps -q -f name=blupow-mosquitto)
+INSTALL_CHOICE=""
+if [ -z "$MQTT_CONTAINER_ID" ]; then
+    echo "ℹ️ No existing BluPow broker found. A new one will be created."
+    INSTALL_CHOICE="1" # Quick Install
+else
+    echo "✔️ Found existing BluPow broker. The gateway will connect to it."
+    INSTALL_CHOICE="2" # Custom Install (re-use existing)
+fi
 
-while [[ "$INSTALL_CHOICE" != "1" && "$INSTALL_CHOICE" != "2" ]]; do
-    echo "❌ Invalid input. Please enter 1 or 2."
-    read -p "Enter your choice [1/2]: " INSTALL_CHOICE
-done
+sleep 2 # Give user a moment to see the message
 
 MQTT_CONNECT_HOST=""
 GATEWAY_NETWORK_MODE="host" # Default to host
 
-# --- Phase 2: Configure MQTT Broker ---
+# --- Phase 2: Configure MQTT Broker (Automated) ---
 if [ "$INSTALL_CHOICE" == "1" ]; then
     # --- Quick Install: Setup a new BluPow-managed broker ---
     echo "🚀 Performing Quick Install..."
@@ -71,24 +74,18 @@ EOF
     echo "✔️ Successfully launched BluPow-managed MQTT broker."
 
 else
-    # --- Custom Install: Use an existing broker ---
-    echo "🔎 Performing Custom Install..."
-    echo "   - This script will attempt to find your Home Assistant instance to join its network."
-    # Find Home Assistant Container & Network
-    HA_CONTAINER_ID=$(docker ps -q --filter "name=^/homeassistant$")
-    if [ -z "$HA_CONTAINER_ID" ]; then
-        echo "⚠️ Warning: Could not find a running container named 'homeassistant'."
-        echo "   - The gateway will be deployed on the 'bridge' network by default."
-        HA_NETWORK="bridge"
+    # --- Custom Install: Use the existing broker ---
+    echo "🔗 Configuring gateway to use existing 'blupow-mosquitto' broker..."
+    MQTT_CONNECT_HOST="blupow-mosquitto"
+    # Ensure the gateway connects to the same network as the broker
+    BROKER_NETWORK=$(docker inspect --format '{{range $key, $value := .NetworkSettings.Networks}}{{$key}}{{end}}' "$MQTT_CONTAINER_ID")
+    if [ -z "$BROKER_NETWORK" ]; then
+        echo "⚠️ Warning: Could not determine network for existing broker. Defaulting to 'host' mode."
+        GATEWAY_NETWORK_MODE="host"
     else
-        HA_NETWORK=$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$HA_CONTAINER_ID")
-        echo "✔️ Found Home Assistant on network '$HA_NETWORK'."
+        echo "✔️ Found broker on network '$BROKER_NETWORK'."
+        GATEWAY_NETWORK_MODE="$BROKER_NETWORK"
     fi
-
-    while [ -z "$MQTT_CONNECT_HOST" ]; do
-        echo "❌ Broker address cannot be empty."
-        read -p "   - Please enter the hostname or IP address of your existing MQTT broker: " MQTT_CONNECT_HOST
-    done
 fi
 
 echo "✔️ Gateway will connect to MQTT at '${MQTT_CONNECT_HOST}'."
@@ -125,13 +122,13 @@ docker run -d \
     --network="$GATEWAY_NETWORK_MODE" \
     --restart=unless-stopped \
     --privileged \
-    -e MQTT_BROKER="$MQTT_CONNECT_HOST" \
+    -e MQTT_BROKER_HOST="$MQTT_CONNECT_HOST" \
     -e MQTT_PORT="1883" \
     -e POLLING_INTERVAL_SECONDS="30" \
     -v "$CONFIG_DIR":/app/config \
     -v /var/run/dbus:/var/run/dbus \
     -v /run/dbus:/run/dbus:ro \
-    blupow-gateway:latest
+    blp-gateway:latest
 
 echo ""
 echo "🎉 Success! The BluPow Gateway is now running."

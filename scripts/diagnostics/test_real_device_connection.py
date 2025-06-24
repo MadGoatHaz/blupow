@@ -7,24 +7,32 @@ import asyncio
 import sys
 import os
 from pathlib import Path
+from bleak import BleakScanner
 
 # Add the custom_components directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "blupow"))
 
 from blupow_client import BluPowClient
 
+# --- Configuration ---
+# Use environment variables for target devices, or use a placeholder
+TARGET_MACS_STR = os.environ.get("BLUPOW_TEST_MACS")
+
 async def test_real_device_connection():
     """Test real device connection and data retrieval"""
     print("🔍 Testing Real BluPow Device Connection")
     print("=" * 50)
     
-    # Test with both known device MAC addresses
-    test_devices = [
-        "D8:B6:73:BF:4F:75",  # Primary device
-        "C4:D3:6A:66:7E:D4",  # Secondary device
-    ]
+    if not TARGET_MACS_STR:
+        print("❌ ERROR: Please set the BLUPOW_TEST_MACS environment variable.")
+        print("   It should be a comma-separated list of MAC addresses.")
+        print("   Example: export BLUPOW_TEST_MACS='AA:BB:CC:DD:EE:FF,11:22:33:44:55:66'")
+        return
+
+    target_devices = [mac.strip() for mac in TARGET_MACS_STR.split(',')]
+    print(f"Attempting to discover: {', '.join(target_devices)}")
     
-    for mac_address in test_devices:
+    for mac_address in target_devices:
         print(f"\n📱 Testing device: {mac_address}")
         print("-" * 30)
         

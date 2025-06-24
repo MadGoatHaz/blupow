@@ -1,3 +1,10 @@
+# Contributing to BluPow
+
+> [!IMPORTANT]
+> **Maintainer Rules of Engagement & Workflow**: Before making any changes, review the established rules and workflow in [`docs/development/MAINTAINER_RULES.md`](./development/MAINTAINER_RULES.md). These rules are non-negotiable.
+
+Welcome, and thank you for your interest in contributing to the BluPow project! This document provides guidelines to ensure a smooth development process.
+
 # 🤝 Contributing to BluPow Integration
 
 Thank you for your interest in contributing to the BluPow Home Assistant integration! We welcome contributions from the community and are excited to work with you.
@@ -449,3 +456,32 @@ python3 scripts/enable_debug_logging.py
 ### **2. Making Changes**
 - **Write clear commit messages**: 
   ```
+  feat: Add support for new sensor
+  fix: Fix connection issue with device XYZ
+  docs: Update installation guide
+  ```
+
+## 🎯 **Forcing UI Updates in Home Assistant**
+
+**IMPORTANT**: Home Assistant aggressively caches the frontend (UI) components of integrations. If you make changes to the configuration flow (`config_flow.py`) or the UI text (`strings.json`), simply restarting Home Assistant is often **not enough** to see your changes.
+
+To guarantee that Home Assistant discards its cache and loads your new UI code, you **must** increment the `version` number in the `custom_components/blupow/manifest.json` file.
+
+**Example Workflow for UI Changes:**
+
+1.  Make your changes in `config_flow.py` or `strings.json`.
+2.  Open `custom_components/blupow/manifest.json`.
+3.  Change `"version": "3.1.0"` to `"version": "3.1.1"`.
+4.  Restart Home Assistant.
+
+This version change signals to Home Assistant that the integration has been updated, forcing a complete reload of all its components.
+
+### **3. Submit Pull Request**
+- **Create** a pull request from your feature branch to the main repository
+- **Provide** a clear title and description of your changes
+- **Reference** any related issues or pull requests
+- **Be** responsive to feedback and questions during the review process
+
+Thank you for contributing to BluPow!
+
+</rewritten_file>

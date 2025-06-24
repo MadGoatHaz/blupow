@@ -46,9 +46,20 @@ class GenericModbusDevice(BaseDevice):
         return True
 
     def get_sensor_definitions(self) -> List[Dict[str, Any]]:
-        """Return the sensor definitions from the JSON configuration."""
-        # The 'sensors' list in the config already matches the required format.
-        return self.config.get("sensors", [])
+        """Return the sensor definitions for this device."""
+        return self.sensors
+
+    async def test_connection(self) -> bool:
+        """Test the BLE connection to the device."""
+        _LOGGER.info(f"Testing connection to Generic Modbus Device at {self.mac_address}")
+        try:
+            async with BleakClient(self.mac_address, timeout=10.0) as client:
+                is_connected = await client.is_connected()
+                _LOGGER.info(f"Connection test result for {self.mac_address}: {is_connected}")
+                return is_connected
+        except BleakError as e:
+            _LOGGER.error(f"Connection test failed for {self.mac_address}: {e}")
+            return False
 
     async def poll(self) -> Optional[Dict[str, Any]]:
         _LOGGER.debug(f"[{self.mac_address}] Starting generic data fetch process.")

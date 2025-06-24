@@ -5,10 +5,33 @@ from typing import Any, Dict, Optional, List
 
 from bleak.exc import BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
+from bleak import BleakClient
 
 from .base import BaseDevice
 
 _LOGGER = logging.getLogger(__name__)
+
+# Constants
+RENOGY_INVERTER_SENSORS = [
+    {'id': 'input_voltage', 'name': 'AC Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
+    {'id': 'input_current', 'name': 'AC Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
+    {'id': 'output_voltage', 'name': 'AC Output Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
+    {'id': 'output_current', 'name': 'AC Output Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
+    {'id': 'output_frequency', 'name': 'AC Frequency', 'metadata': {'unit_of_measurement': 'Hz', 'device_class': 'frequency'}},
+    {'id': 'battery_voltage', 'name': 'Battery Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
+    {'id': 'battery_percentage', 'name': 'Battery SOC', 'metadata': {'unit_of_measurement': '%', 'device_class': 'battery'}},
+    {'id': 'temperature', 'name': 'Inverter Temperature', 'metadata': {'unit_of_measurement': '°C', 'device_class': 'temperature'}},
+    {'id': 'load_active_power', 'name': 'AC Load Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power', 'state_class': 'measurement'}},
+    {'id': 'load_apparent_power', 'name': 'AC Apparent Power', 'metadata': {'unit_of_measurement': 'VA'}},
+    {'id': 'load_percentage', 'name': 'Load Percentage', 'metadata': {'unit_of_measurement': '%'}},
+    {'id': 'charging_current', 'name': 'Charging Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
+    {'id': 'charging_status', 'name': 'Charging Status'},
+    {'id': 'solar_voltage', 'name': 'Solar Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
+    {'id': 'solar_current', 'name': 'Solar Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
+    {'id': 'solar_power', 'name': 'Solar Input Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power', 'state_class': 'measurement'}},
+    {'id': 'model', 'name': 'Inverter Model'},
+    {'id': 'device_id', 'name': 'Device ID'}
+]
 
 def crc16(data: bytes) -> bytes:
     """
@@ -40,26 +63,7 @@ class RenogyInverter(BaseDevice):
 
     def get_sensor_definitions(self) -> List[Dict[str, Any]]:
         """Return the sensor definitions for the Renogy Inverter."""
-        return [
-            {'id': 'input_voltage', 'name': 'AC Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-            {'id': 'input_current', 'name': 'AC Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-            {'id': 'output_voltage', 'name': 'AC Output Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-            {'id': 'output_current', 'name': 'AC Output Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-            {'id': 'output_frequency', 'name': 'AC Frequency', 'metadata': {'unit_of_measurement': 'Hz', 'device_class': 'frequency'}},
-            {'id': 'battery_voltage', 'name': 'Battery Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-            {'id': 'battery_percentage', 'name': 'Battery SOC', 'metadata': {'unit_of_measurement': '%', 'device_class': 'battery'}},
-            {'id': 'temperature', 'name': 'Inverter Temperature', 'metadata': {'unit_of_measurement': '°C', 'device_class': 'temperature'}},
-            {'id': 'load_active_power', 'name': 'AC Load Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power'}},
-            {'id': 'load_apparent_power', 'name': 'AC Apparent Power', 'metadata': {'unit_of_measurement': 'VA'}},
-            {'id': 'load_percentage', 'name': 'Load Percentage', 'metadata': {'unit_of_measurement': '%'}},
-            {'id': 'charging_current', 'name': 'Charging Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-            {'id': 'charging_status', 'name': 'Charging Status'},
-            {'id': 'solar_voltage', 'name': 'Solar Input Voltage', 'metadata': {'unit_of_measurement': 'V', 'device_class': 'voltage'}},
-            {'id': 'solar_current', 'name': 'Solar Input Current', 'metadata': {'unit_of_measurement': 'A', 'device_class': 'current'}},
-            {'id': 'solar_power', 'name': 'Solar Input Power', 'metadata': {'unit_of_measurement': 'W', 'device_class': 'power'}},
-            {'id': 'model', 'name': 'Inverter Model'},
-            {'id': 'device_id', 'name': 'Device ID'}
-        ]
+        return RENOGY_INVERTER_SENSORS
 
     def _parse_inverter_stats(self, data: bytes) -> Dict[str, Any]:
         """Parse data from register 4000 (Inverter Stats). 10 words."""
@@ -200,3 +204,15 @@ class RenogyInverter(BaseDevice):
             return None
             
         return all_data 
+
+    async def test_connection(self) -> bool:
+        """Test the BLE connection to the inverter."""
+        _LOGGER.info(f"Testing connection to Renogy Inverter at {self.mac_address}")
+        try:
+            async with BleakClient(self.mac_address, timeout=10.0) as client:
+                is_connected = await client.is_connected()
+                _LOGGER.info(f"Connection test result for {self.mac_address}: {is_connected}")
+                return is_connected
+        except BleakError as e:
+            _LOGGER.error(f"Connection test failed for {self.mac_address}: {e}")
+            return False 
