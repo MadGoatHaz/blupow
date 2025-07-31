@@ -146,6 +146,8 @@ class DeviceManager:
         device = self.create_device(address, device_type, {}, ble_device)
         
         _LOGGER.info(f"Testing connection to new device {address}...")
+        # Add a small delay to allow the device to be ready for a connection
+        await asyncio.sleep(1.0)
         connected = await device.test_connection()
 
         if not connected:
@@ -178,16 +180,37 @@ class DeviceManager:
     async def discover_devices(self) -> List[Dict[str, str]]:
         """Scans for BLE devices and returns a list of new discoveries."""
         _LOGGER.info("Starting BLE device scan...")
-        try:
-            discovered = await BleakScanner.discover(timeout=10.0)
-            self.discovered_device_cache.clear()
-            for device in discovered:
-                self.discovered_device_cache[device.address] = device
-        except BleakError as e:
-            _LOGGER.error(f"Error during BLE scan: {e}")
-            return []
-
-        _LOGGER.info(f"Scan complete. Found {len(self.discovered_device_cache)} devices.")
+        # Try multiple times with longer timeout to improve discovery reliability
+        max_retries = 3
+        timeout = 15.0  # Increased timeout
+        
+        for attempt in range(max_retries):
+            try:
+                discovered = await BleakScanner.discover(timeout=timeout)
+                self.discovered_device_cache.clear()
+                for device in discovered:
+                    self.discovered_device_cache[device.address] = device
+                
+                _LOGGER.info(f"Scan attempt {attempt + 1} complete. Found {len(self.discovered_device_cache)} devices.")
+                
+                # If we found devices, break out of the retry loop
+                if self.discovered_device_cache:
+                    break
+                    
+                # If no devices found and we have more retries, wait a bit before retrying
+                if attempt < max_retries - 1:
+                    _LOGGER.info(f"No devices found in attempt {attempt + 1}. Retrying in 2 seconds...")
+                    await asyncio.sleep(2.0)
+                    
+            except BleakError as e:
+                _LOGGER.error(f"Error during BLE scan attempt {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    _LOGGER.info("Retrying in 2 seconds...")
+                    await asyncio.sleep(2.0)
+                else:
+                    return []
+        
+        _LOGGER.info(f"Final scan complete. Found {len(self.discovered_device_cache)} devices.")
         
         return [
             {"name": d.name or "Unknown", "address": d.address}

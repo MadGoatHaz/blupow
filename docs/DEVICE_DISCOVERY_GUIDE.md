@@ -9,7 +9,7 @@ The primary method for device discovery is handled directly within the Home Assi
 ### How it Works:
 
 1.  When you add the BluPow integration for the first time, you are presented with a menu.
-2.  If you select **"Auto Discover Devices"**, the Home Assistant integration initiates a 10-second Bluetooth Low Energy (BLE) scan.
+2.  If you select **"Auto Discover Devices"**, the Home Assistant integration initiates a Bluetooth Low Energy (BLE) scan with a 15-second timeout and up to 3 retry attempts if no devices are found initially.
 3.  This scan looks for nearby devices that are broadcasting names commonly associated with Renogy products (e.g., containing "Renogy" or "BT-TH").
 4.  A list of these discovered devices is then presented to you in a dropdown menu.
 5.  When you select a device and confirm its type, the integration sends an `add_device` command to the BluPow Gateway via MQTT.

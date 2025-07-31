@@ -368,6 +368,6 @@ blupow:
 
 ---
 
-**Implementation Guide Version**: 1.0  
-**Last Updated**: June 20, 2025  
-**Compatibility**: Home Assistant 2024.1+ 
+**Implementation Guide Version**: 1.0
+**Last Updated**: July 31, 2025
+**Compatibility**: Home Assistant 2024.1+

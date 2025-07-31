@@ -52,14 +52,14 @@ class BaseDevice(ABC):
                 device_to_connect = self._ble_device
                 if not device_to_connect:
                     _LOGGER.debug(f"[{self.mac_address}] No cached device, scanning for address...")
-                    device_to_connect = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
+                    device_to_connect = await BleakScanner.find_device_by_address(self.mac_address, timeout=20.0)
                 
                 if not device_to_connect:
                     _LOGGER.warning(f"[{self.mac_address}] Device not found.")
                     raise BleakError(f"Device {self.mac_address} not found")
                 
                 self._client = BleakClient(device_to_connect)
-                await self._client.connect()
+                await self._client.connect(timeout=30.0)
                 _LOGGER.info(f"[{self.mac_address}] Connection successful.")
                 return True
             except BleakError as e:

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [4.0.1] - 2025-07-31 - 🐛 **Bug Fixes and Stability Improvements**
+
+### 🔧 **Fixed**
+- **Device Connection Timeouts**: Increased Bluetooth connection timeout from 20 seconds to 30 seconds in `BaseDevice.connect()` method
+- **Device Discovery Reliability**: Improved discovery process with increased timeout (10s → 15s) and retry logic (up to 3 attempts) in `DeviceManager.discover_devices()`
+- **Device Finding Timeout**: Increased timeout for finding devices by address from 10 seconds to 20 seconds in `BaseDevice.connect()` method
+- **Connection Timing**: Added a small delay (1 second) before testing device connections to allow devices to be ready
+
 ## [4.0.0] - 2025-06-23 - 🏗️ **The Great Refactoring: A Foundation for the Future**
 
 This is a developer-focused release that fundamentally refactors the BluPow Gateway for vastly improved stability, maintainability, and future extensibility. There are no user-facing feature changes, but the underlying improvements are critical for the project's long-term health.
